@@ -61,3 +61,12 @@ plus a `strftime()`-based UPDATE to backfill existing rows. Lesson: as a
 schema grows, earlier tables sometimes need columns that only become
 necessary once a later feature is designed — this is normal, not a sign of
 bad initial design.
+
+##Python##
+
+**Windows redirects `python` to the Microsoft Store by default**
+Even with Python properly installed, typing `python` in PowerShell can
+trigger a fake "not found, install from Store" message due to Windows'
+App Execution Aliases feature. The Python Launcher (`py`) bypasses this
+and works directly — use `py` instead of `python` for all commands in this
+project on Windows.

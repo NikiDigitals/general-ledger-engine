@@ -36,6 +36,13 @@
 
 ## Data - Generator
 
+8. **Python connected to the database**: verified the sqlite3 module can
+   read from erp_demo.db directly. **[Python]**
+
+9.**First data-generation loop**: fiscal_calendar rebuilt via Python,
+replacing 12 manual INSERTs with a single for-loop and parameterised
+queries (? placeholders). **[Python]**
+
 ## Backend (NODE/Express)
 
 ## Frontend (React)##
