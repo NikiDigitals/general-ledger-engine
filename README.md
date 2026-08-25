@@ -23,9 +23,10 @@ frontend, and deployment. See the roadmap below.
 
 ```
 .
-├── erp_demo.db                    # The SQLite database itself
+├── database/
+    └──erp_demo.db                    # The SQLite database itself
 ├── scripts/
-│   └── Database-SQL.md            # Every CREATE TABLE / VIEW statement, runnable top to bottom
+│    └──Database-SQL.md            # Every CREATE TABLE / VIEW statement, runnable top to bottom
 ├── diagrams/
 │   └── ERD.md                     # Entity-relationship diagram (Mermaid)
 └── docs/
