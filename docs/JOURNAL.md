@@ -1,11 +1,11 @@
 # Build Journal
 
 Narrative log of the project, organised by roadmap phase rather than by
-session — written for later reuse in the project's GitBook. Where
-`MILESTONES.md` states *what* was completed, this journal tells the story
-of *how* it happened: the reasoning, the mistakes, the moments something
-clicked. Each section is updated as that phase progresses, so a phase may
-span several sessions before its story is complete.
+session. Where `MILESTONES.md` states _what_ was completed, this journal
+tells the story of _how_ it happened: the reasoning, the mistakes, the
+moments something clicked. Each section is updated as that phase
+progresses, so a phase may span several sessions before its story is
+complete.
 
 ---
 
@@ -15,7 +15,7 @@ span several sessions before its story is complete.
 
 The project started with a single question: what's the simplest table
 needed before anything else can exist? The answer was `chart_of_accounts`
-— every other table eventually points back to it, directly or indirectly.
+Every other table eventually points back to it, directly or indirectly.
 
 From there, the build followed the natural dependency order: the chart of
 accounts, then the General Ledger core (`journal_entry` and
@@ -25,21 +25,21 @@ receipt), then its mirror image, Procure-to-Pay (vendor, purchase order,
 AP invoice, vendor payment), and finally the Record-to-Report support
 tables (close checklist, budget line).
 
-By the end, both cycles had been walked through by hand — a real order,
+By the end, both cycles had been walked through by hand. A real order,
 turned into a real invoice, turned into a real posting, turned into a real
-payment — with every step verified against the database rather than
+payment. Every step verified against the database rather than
 assumed correct. Along the way came a string of very typical early-SQL
 mistakes: smart quotes instead of straight quotes, `FOREIGN KEY` written
 inside a column definition instead of as its own line, mismatched
 brackets, a case-sensitivity surprise on a `UNIQUE` constraint. None of
-these were conceptual failures — they were precision failures, and fixing
+these were conceptual failures. They were precision failures, and fixing
 each one built the habit of reading a `CREATE TABLE` statement line by
 line rather than skimming it.
 
 **Key realisation:** double-entry bookkeeping stops being an abstract
 accounting rule once you've watched a database physically refuse to save
 an unbalanced entry. The CHECK constraint on `journal_entry_line` did more
-to explain *why* debits must equal credits than any textbook definition
+to explain _why_ debits must equal credits than any textbook definition
 could.
 
 ---
@@ -55,24 +55,25 @@ to correctly normalise Debit vs Credit balances), `v_ar_aging` and
 WHEN for ageing buckets), `v_income_statement` (conditional aggregation
 without a GROUP BY, to produce a single summary row), `v_close_status`
 (COUNT and a 1-or-0 SUM pattern for percentage calculations), and finally
-`v_budget_vs_actual` — the most complex of the six, requiring a correlated
-subquery to compare each budget line against its matching actual postings.
+`v_budget_vs_actual` This was the most complex one of the six, requiring
+a correlated subquery to compare each budget line against its matching
+actual postings.
 
 That last view also exposed a design gap: `journal_entry` had never been
 given `fiscal_year`/`fiscal_period` columns, because the original design
 only anticipated filtering by `entry_date`. Rather than a sign of bad
 planning, this was a natural consequence of not yet knowing what later
-reporting would need — the columns were added retroactively with `ALTER
+reporting would need. The columns were added retroactively with `ALTER
 TABLE`, then backfilled from existing dates using `strftime()`.
 
 The trial balance view earned its keep almost immediately: it surfaced a
-real data bug — a missing pair of journal entry lines from an earlier
-manual entry — that would otherwise have gone unnoticed. That single
-moment was probably the clearest demonstration of *why* reporting and
+real data bug. A missing pair of journal entry lines from an earlier
+manual entry, that would otherwise have gone unnoticed. That single
+moment was probably the clearest demonstration of _why_ reporting and
 database constraints matter, not just how to write them.
 
 **Key realisation:** a view can be syntactically perfect and still be
-substantively wrong if it queries the wrong table or omits a filter — SQL
+substantively wrong if it queries the wrong table or omits a filter. SQL
 checks your grammar, never your intent. Building `v_ap_aging` by adapting
 a copy of `v_ar_aging` and forgetting to change `FROM ar_invoice` to `FROM
 ap_invoice` proved that directly.
@@ -108,13 +109,13 @@ immediately. A five-minute detour, and a good reminder that environment
 setup issues are a normal, expected part of development.
 
 **Key realisation so far:** the value of Python here isn't "SQL but
-fancier" — it's that a for-loop turns twelve error-prone manual steps into
+fancier" It's that a for-loop turns twelve error-prone manual steps into
 one correct one, and that habit (loops over repetition, placeholders over
 string-building) is what will make hundreds of realistic transactions
 possible later without hundreds of chances to make a typo.
 
-*(To be continued: product, sales orders, AR/AP invoices, payments, and
-finally hundreds of transactions generated with controlled randomness.)*
+_(To be continued: product, sales orders, AR/AP invoices, payments, and
+finally hundreds of transactions generated with controlled randomness.)_
 
 ---
 
@@ -122,12 +123,12 @@ finally hundreds of transactions generated with controlled randomness.)*
 
 **Status: not started.**
 
-*(This section will describe how the database gets exposed over HTTP —
+_(This section will describe how the database gets exposed over HTTP —
 the first time the project becomes something other than a local database
 file. Expect topics like REST route design, how the balance guarantee
 gets enforced in application code as a second line of defence, and the
 first moment a request from outside SQLite successfully posts a
-transaction.)*
+transaction.)_
 
 ---
 
@@ -135,10 +136,10 @@ transaction.)*
 
 **Status: not started.**
 
-*(This section will cover the first UI screens, the jump from "no
+_(This section will cover the first UI screens, the jump from "no
 JavaScript experience" to a working interface, and the point where the
 project stops being something only explorable via a database browser or
-API client.)*
+API client.)_
 
 ---
 
@@ -146,9 +147,9 @@ API client.)*
 
 **Status: not started.**
 
-*(This section will document getting the backend onto Azure App Service
-and the frontend onto Azure Static Web Apps — the first time the project
-is reachable by anyone other than its author.)*
+_(This section will document getting the backend onto Azure App Service
+and the frontend onto Azure Static Web Apps. The first time the project
+is reachable by anyone others.)_
 
 ---
 
@@ -156,7 +157,7 @@ is reachable by anyone other than its author.)*
 
 **Status: not started.**
 
-*(This section will describe turning the finished project into a
+_(This section will describe turning the finished project into a
 portfolio piece: what got highlighted, what got left out, and how the
 story of building it from scratch was told to an audience that never saw
-any of the mistakes along the way.)*
+any of the mistakes along the way.)_
