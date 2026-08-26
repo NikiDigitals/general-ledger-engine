@@ -128,6 +128,90 @@ for i, name in enumerate(customer_names, start=1):
 print(f"{len(customer_names)} customers inserted.")
 
 
+#---Product---#
+cursor.execute("DROP TABLE IF EXISTS product")
+
+cursor.execute("""
+CREATE TABLE product(
+    product_id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    sku                   TEXT NOT NULL UNIQUE,
+    product_name          TEXT NOT NULL,
+    category              TEXT,
+    unit_cost             NUMERIC NOT NULL,
+    unit_price            NUMERIC NOT NULL,
+    revenue_account_id    INTEGER,
+    cogs_account_id       INTEGER,
+    inventory_account_id  INTEGER,
+    FOREIGN KEY (revenue_account_id) REFERENCES chart_of_accounts(account_id),
+    FOREIGN KEY (cogs_account_id) REFERENCES chart_of_accounts(account_id),
+    FOREIGN KEY (inventory_account_id) REFERENCES chart_of_accounts(account_id)
+)
+""")
+print("product table created.")
+
+products = [
+    ("Top", 5.00 , 9.99), 
+    ("T-shirt", 10.00 , 14.99),
+    ("Hoodie", 15.00, 24.99),
+    ("Cardigan", 17.50, 29.99),
+    ("Pullover" , 17.50, 29.99) 
+]
+
+for i, (name, cost, price) in enumerate(products, start=1):
+    sku = f"SKU-{1000 +i}"
+    cursor.execute("""
+        INSERT INTO product (sku, product_name, unit_cost, unit_price,  revenue_account_id, cogs_account_id, inventory_account_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (sku, name, cost, price, 2, 7, 3))
+
+print(f"{len(products)} products inserted.")
+
+# --- Sales Order + Sales Order Line ---
+cursor.execute("DROP TABLE IF EXISTS sales_order_line")
+cursor.execute("DROP TABLE IF EXISTS sales_order")
+
+cursor.execute("""
+    CREATE TABLE sales_order (
+        sales_order_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_number    TEXT NOT NULL UNIQUE,
+        customer_id     INTEGER NOT NULL,
+        order_date      DATE NOT NULL,
+        status          TEXT DEFAULT 'Open' CHECK (status IN ('Open', 'Fulfilled', 'Invoiced', 'Cancelled')),
+        FOREIGN KEY (customer_id) REFERENCES customer(customer_id)
+    )
+""")
+
+cursor.execute("""
+    CREATE TABLE sales_order_line (
+        line_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        sales_order_id   INTEGER NOT NULL,
+        product_id       INTEGER NOT NULL,
+        quantity         NUMERIC NOT NULL,
+        unit_price       NUMERIC NOT NULL,
+        FOREIGN KEY (sales_order_id) REFERENCES sales_order(sales_order_id),
+        FOREIGN KEY (product_id) REFERENCES product(product_id)
+    )
+""")
+
+print("sales_order and sales_order_line tables created.")
+
+# Create 3 orders, each with 1-2 lines
+
+cursor.execute("""
+    INSERT INTO sales_order(order_number, customer_id, order_date, status)
+    VALUES (?, ?, ?, ?)
+""", ("SO-2025-0001", 1, "2025-01-20", "Open"))  
+
+new_order_id = cursor.lastrowid  # the sales_order_id that was just assigned
+
+
+cursor.execute("""
+    INSERT INTO sales_order_line (sales_order_id, product_id, quantity, unit_price)
+    VALUES (?, ?, ?, ?)
+   """, (new_order_id, 1, 3, 9.99)) 
+
+print("1 sales order with 1 line inserted")
+
 conn.commit()
 conn.close()
 
