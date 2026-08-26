@@ -224,10 +224,3 @@ transactional table (`AR_INVOICE`, `CASH_RECEIPT`, `AP_INVOICE`,
 `VENDOR_PAYMENT`). This reflects the core architecture decision: the
 General Ledger is the single source of truth, and every financial event in
 any sub-ledger produces a posting there — never the other way around.
-
-## How to preview this before committing
-
-Paste the code block above (without the outer ` ```mermaid ` fence removed)
-into the [Mermaid Live Editor](https://mermaid.live) to see the rendered
-diagram instantly. Once this file is committed to GitHub, it renders
-automatically wherever it's linked or viewed — no extra tool needed.
