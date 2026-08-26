@@ -14,7 +14,7 @@ complete.
 **Status: complete.**
 
 The project started with a single question: what's the simplest table
-needed before anything else can exist? The answer was `chart_of_accounts`
+needed before anything else can exist? The answer was `chart_of_accounts`.
 Every other table eventually points back to it, directly or indirectly.
 
 From there, the build followed the natural dependency order: the chart of
@@ -27,14 +27,14 @@ tables (close checklist, budget line).
 
 By the end, both cycles had been walked through by hand. A real order,
 turned into a real invoice, turned into a real posting, turned into a real
-payment. Every step verified against the database rather than
-assumed correct. Along the way came a string of very typical early-SQL
-mistakes: smart quotes instead of straight quotes, `FOREIGN KEY` written
-inside a column definition instead of as its own line, mismatched
-brackets, a case-sensitivity surprise on a `UNIQUE` constraint. None of
-these were conceptual failures. They were precision failures, and fixing
-each one built the habit of reading a `CREATE TABLE` statement line by
-line rather than skimming it.
+payment. Every step verified against the database rather than assumed
+correct. Along the way came a string of very typical early-SQL mistakes:
+smart quotes instead of straight quotes, `FOREIGN KEY` written inside a
+column definition instead of as its own line, mismatched brackets, a
+case-sensitivity surprise on a `UNIQUE` constraint. None of these were
+conceptual failures. They were precision failures, and fixing each one
+built the habit of reading a `CREATE TABLE` statement line by line rather
+than skimming it.
 
 **Key realisation:** double-entry bookkeeping stops being an abstract
 accounting rule once you've watched a database physically refuse to save
@@ -55,7 +55,7 @@ to correctly normalise Debit vs Credit balances), `v_ar_aging` and
 WHEN for ageing buckets), `v_income_statement` (conditional aggregation
 without a GROUP BY, to produce a single summary row), `v_close_status`
 (COUNT and a 1-or-0 SUM pattern for percentage calculations), and finally
-`v_budget_vs_actual` This was the most complex one of the six, requiring
+`v_budget_vs_actual`. This was the most complex one of the six, requiring
 a correlated subquery to compare each budget line against its matching
 actual postings.
 
@@ -82,7 +82,7 @@ ap_invoice` proved that directly.
 
 ## 3. Python data generator (realistic multi-month transaction volume)
 
-**Status: in progress.**
+**Status: core structure complete; scale-up in progress.**
 
 The move from typing SQL by hand to writing Python that generates the
 schema and data programmatically marked the first real step toward a
@@ -95,27 +95,58 @@ directly in the original `CREATE TABLE journal_entry` statement — the kind
 of small correction that only becomes obvious once you're rebuilding
 something from scratch a second time.
 
-Progress so far: `chart_of_accounts`, the General Ledger tables, a full
-12-month `fiscal_calendar` (generated with a single `for` loop instead of
-twelve manual inserts), and a first batch of customers, all rebuilt via
-Python. Parameterised queries (`?` placeholders instead of building SQL
-strings by hand) were established as a non-negotiable habit from the very
-first `INSERT`, specifically to avoid SQL injection risk and to handle
-values safely regardless of their content.
+The build proceeded table by table, in the same dependency order as the
+original SQL work: chart of accounts, General Ledger, a full 12-month
+fiscal calendar (generated with a single `for` loop instead of twelve
+manual inserts), customers, and products. Parameterised queries (`?`
+placeholders instead of building SQL strings by hand) were established as
+a non-negotiable habit from the very first `INSERT`.
 
-One environment quirk surfaced along the way: on Windows, typing `python`
-silently redirected to a Microsoft Store prompt, while `py` worked
-immediately. A five-minute detour, and a good reminder that environment
-setup issues are a normal, expected part of development.
+The Order-to-Cash chain came next, and this is where the generator earned
+its keep: `cursor.lastrowid` was introduced to capture a newly created
+row's ID for use in its child rows (an order's ID for its lines, an
+invoice's ID for its posting), first walked through by hand for a single
+record, then generalised into a full loop that creates five orders, turns
+each into an invoice with a balanced GL posting, and registers a matching
+cash receipt that closes it out — the first time this project generated
+GL-correct transactions without a single manual `INSERT`.
 
-**Key realisation so far:** the value of Python here isn't "SQL but
-fancier" It's that a for-loop turns twelve error-prone manual steps into
-one correct one, and that habit (loops over repetition, placeholders over
-string-building) is what will make hundreds of realistic transactions
-possible later without hundreds of chances to make a typo.
+Procure-to-Pay followed as a near-literal mirror of O2C — vendor, purchase
+order, AP invoice, vendor payment — and went noticeably faster, since the
+pattern was already familiar. One `IndentationError` came up while adding
+new lines inside an existing loop and was self-diagnosed and fixed before
+asking for help, a good sign the underlying pattern had actually sunk in
+rather than just being copied. The two Record-to-Report support tables,
+`close_checklist` and `budget_line`, closed out all 17 tables — the first
+time the full schema existed entirely as Python-generated code.
 
-_(To be continued: product, sales orders, AR/AP invoices, payments, and
-finally hundreds of transactions generated with controlled randomness.)_
+Running `v_trial_balance` against the freshly generated data produced a
+useful surprise: Accounts Receivable and Accounts Payable both netted
+correctly to zero, proving both cycles close properly, but Inventory sat
+at a positive balance and Cash was negative. Neither was a bug — every
+individual posting was still perfectly balanced — but it revealed that the
+generator, unlike the original hand-written SQL version, never posted a
+COGS/inventory reduction on the sale side and never recorded an opening
+capital injection. Both gaps were logged as TODOs directly in the script
+rather than fixed immediately, a deliberate choice to keep the current
+milestone scoped to "the structure works" before layering in the missing
+posting types.
+
+**Key realisation:** a for-loop turns a dozen error-prone manual steps
+into one correct one, but it also means a booking mistake — like a
+missing posting type — now repeats consistently instead of varying by
+accident. Reporting caught the gap immediately precisely because every
+record was generated the same, deliberate way. The distinction that
+crystallised here: "the books balance" is a guarantee the database
+enforces on every single posting; "the books are complete" depends on
+whether every transaction type the business actually needs has been
+implemented yet. The first was true from the start. The second isn't,
+yet — and now there's a written, specific list of what's missing instead
+of a vague sense that something might be.
+
+_(To be continued: adding the missing COGS/inventory and opening capital
+postings, then scaling the fixed 5-record dataset up to hundreds of
+transactions spread across multiple months using controlled randomness.)_
 
 ---
 
@@ -148,8 +179,8 @@ API client.)_
 **Status: not started.**
 
 _(This section will document getting the backend onto Azure App Service
-and the frontend onto Azure Static Web Apps. The first time the project
-is reachable by anyone others.)_
+and the frontend onto Azure Static Web Apps — the first time the project
+is reachable by anyone other than its author.)_
 
 ---
 

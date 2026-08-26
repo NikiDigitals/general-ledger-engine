@@ -47,6 +47,33 @@ All views read only from `journal_entry_line` and the sub-ledger tables —
 never from anywhere else — so reporting always stays consistent with
 whatever is actually posted in the GL.
 
+## Data generation layer (Python)
+
+`scripts/generate_data.py` rebuilds the entire schema and seeds it with
+data programmatically — the same 17 tables, the same constraints, but
+created via `CREATE TABLE` statements executed from Python rather than
+typed by hand in DB Browser. This is what makes the database reproducible
+with a single command instead of a manually maintained file.
+
+The generator currently seeds a small, fixed test dataset (5 records per
+core entity) covering the full O2C and P2P cycles end-to-end, including
+automated GL posting for every invoice, receipt, and payment — the same
+logic that was first proven by hand in SQL, now expressed as a repeatable
+loop.
+
+**Known, deliberately deferred gaps** (tracked as TODOs in the script):
+- No `Dr COGS / Cr Inventory` posting on the sale side, so Inventory only
+  ever increases (via P2P purchases) and never decreases
+- No opening capital entry (`Dr Cash / Cr Common Stock`), so Cash starts
+  from zero rather than a funded balance
+
+Neither gap violates the balance guarantee — every individual posting
+generated so far is still perfectly balanced — but they mean the
+*aggregate* picture across accounts isn't yet fully representative of a
+real business. Both are planned fixes for the upcoming scale-up phase,
+alongside replacing the fixed 5-record dataset with hundreds of
+randomised transactions across multiple months.
+
 ## Why this design?
 
 The core guarantee of this system is that the books **always** balance,
@@ -67,8 +94,8 @@ of the project at any point is reproducible from the repository alone.
 
 ## Still to be built
 
-- Python data generator (realistic multi-month transaction volume,
-  replacing the current small set of hand-typed test rows)
+- Scale-up of the Python data generator to realistic, randomised
+  multi-month transaction volume, including the two known gaps above
 - Backend (Node/Express) to drive this database via a REST API
 - Frontend (React) for data entry
 - Deployment on Azure (App Service + Static Web Apps)

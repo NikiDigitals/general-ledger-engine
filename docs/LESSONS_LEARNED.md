@@ -62,7 +62,7 @@ schema grows, earlier tables sometimes need columns that only become
 necessary once a later feature is designed — this is normal, not a sign of
 bad initial design.
 
-##Python##
+## Python
 
 **Windows redirects `python` to the Microsoft Store by default**
 Even with Python properly installed, typing `python` in PowerShell can

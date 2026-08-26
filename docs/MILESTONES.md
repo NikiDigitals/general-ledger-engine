@@ -1,6 +1,6 @@
 # Milestones
 
-## Database fundament completed
+## Database schema
 
 1. **Database foundation built**: chart of accounts, general ledger
    (`journal_entry` + `journal_entry_line`) with database-enforced
@@ -19,7 +19,7 @@
    R2R), including close checklist and budget tracking support.
    **[SQLite/DDL]**
 
-## Raportage views
+## Reporting views
 
 5. **First reporting view built**: `v_trial_balance`, combining JOIN,
    GROUP BY, SUM, and CASE WHEN to correctly normalise Debit vs Credit
@@ -34,7 +34,7 @@
    including a correlated subquery and an ALTER TABLE schema fix along the
    way. **[SQL/DDL+DQL]**
 
-## Data - Generator
+## Python data generator
 
 8. **Python connected to the database**: verified the sqlite3 module can
    read from erp_demo.db directly. **[Python]**
@@ -47,25 +47,31 @@
    reduction on sale, no opening capital entry) documented as TODOs for
    the upcoming scale-up phase. **[Python]**
 
-## Backend (NODE/Express)
+## Backend API (Node/Express)
 
-## Frontend (React)##
+*(No milestones yet.)*
 
-## Dashboiard - demo
+## Frontend (React)
 
-## Github + deployment naar Azure
+*(No milestones yet.)*
 
-## Portfolio - website + GitBook##
+## Deployment (Azure)
+
+*(No milestones yet.)*
+
+## Portfolio site write-up
+
+*(No milestones yet.)*
 
 <!--
 Upcoming milestones, to be added once reached:
 
-3. Procure-to-Pay fully working (mirror image of O2C)
-4. Reporting layer: trial balance, AR/AP ageing as SQL views
-5. Data generator script (Python) for realistic test data
-6. Backend API (Node/Express) built, first endpoint live
-7. Frontend (React) connected to the backend, first invoice created via the UI
-8. R2R: close checklist + budget vs actual added
-9. Fully running locally: backend + frontend + database together
-10. Deployed on Azure, publicly reachable
+10. Python data generator scaled up: known gaps fixed (COGS/inventory
+    reduction, opening capital entry) and fixed test dataset replaced
+    with hundreds of randomised transactions across multiple months
+11. Backend API (Node/Express) built, first endpoint live
+12. Frontend (React) connected to the backend, first invoice created via the UI
+13. Fully running locally: backend + frontend + database together
+14. Deployed on Azure, publicly reachable
+15. Portfolio site write-up published
 -->
