@@ -83,3 +83,26 @@ nothing to match.
 inserted belongs inside one shared set of parentheses. Writing
 `INSERT INTO product sku, (product_name, ...)` separates one column out,
 which SQL cannot parse correctly.
+
+**Python uses indentation, not brackets, to define code blocks**
+Unlike SQL (where `()` define scope) or many other languages (where `{}`
+do), Python determines what belongs inside a loop or function purely by
+how far a line is indented. A single misaligned line — even by one space —
+causes an `IndentationError`. This becomes especially easy to trigger when
+manually adding lines to an existing loop, since every new line must match
+the exact indentation of its neighbours.
+
+**A "balanced" trial balance doesn't mean every account balance is meaningful yet**
+After rebuilding O2C and P2P via Python, `v_trial_balance` showed AR and
+AP correctly netting to zero (proof those two cycles close properly), but
+Inventory showed a positive balance and Cash was negative. Neither was a
+bug: the Python generator's O2C postings only recorded Dr AR / Cr Revenue
+and never reduced Inventory or booked COGS on the sale side (unlike the
+original hand-written SQL version, which did), and no opening capital
+injection (Dr Cash / Cr Common Stock) was ever posted. Every individual
+posting was still perfectly balanced — the CHECK constraint guarantees
+that — but the *overall* picture across accounts only makes full business
+sense once every intended posting type actually exists. Lesson: "the
+books balance" and "the books are complete" are two different claims: the
+first is guaranteed by the database, the second depends on whether every
+transaction type the business model needs has actually been implemented.
