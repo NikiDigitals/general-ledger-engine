@@ -37,12 +37,13 @@ roadmap below.
 ```
 .
 ├── database/
-│   └── erp_demo.db                # The SQLite database itself
+│   └── erp_demo.db                          # The SQLite database itself
 ├── scripts/
-│   ├── Database-SQL.md            # Every CREATE TABLE / VIEW statement, runnable top to bottom
-│   └── generate_data.py           # Python data generator (structure complete, scale-up in progress)
+│   ├── rebuild_database_sql.md              # Every CREATE TABLE / VIEW statement, runnable top to bottom
+│   ├── generate_data.py                     # Python data generator (structure complete, scale-up in progress)
+│   └── data_generator_python_explained.md   # The same script, section by section, with commentary
 ├── diagrams/
-│   └── ERD.md                     # Entity-relationship diagram (Mermaid)
+│   └── ERD.md                               # Entity-relationship diagram (Mermaid)
 └── docs/
     ├── ARCHITECTURE.md            # Design overview
     ├── JOURNAL.md                 # Narrative build log, by roadmap phase
@@ -65,9 +66,9 @@ relationships.
 
 ## Rebuilding the database from scratch
 
-Two ways to rebuild the database, kept in sync with each other:
+Three resources, kept in sync with each other:
 
-- **SQL, step by step**: [`scripts/Database-SQL.md`](scripts/Database-SQL.md)
+- **SQL, step by step**: [`scripts/rebuild_database_sql.md`](scripts/rebuild_database_sql.md)
   — open it, copy each SQL block in order into DB Browser for SQLite's
   Execute SQL tab (or any SQLite client), and run top to bottom.
 - **Python, one command**: `scripts/generate_data.py` — rebuilds all 17
@@ -76,6 +77,10 @@ Two ways to rebuild the database, kept in sync with each other:
   capital entry) are tracked as TODOs in the script itself, to be resolved
   as part of the upcoming scale-up to realistic, randomised transaction
   volume.
+- **Python, explained**: [`scripts/data_generator_python_explained.md`](scripts/data_generator_python_explained.md)
+  — the same script broken into sections, with commentary on every new
+  Python concept as it's introduced (loops, `enumerate`, tuple unpacking,
+  dictionaries, `cursor.lastrowid`, parameterised queries).
 
 ## Roadmap
 
