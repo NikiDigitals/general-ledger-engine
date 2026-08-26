@@ -1,8 +1,8 @@
 # General Ledger Engine
 
-A finance system built from scratch, covering Order-to-Cash,
+A general ledger from start to end built from scratch, covering Order-to-Cash,
 Procure-to-Pay, and Record-to-Report, with double-entry bookkeeping
-enforced at the database level — no posting can ever be unbalanced.
+enforced at the database level. No posting can ever be unbalanced.
 
 This is a learning-by-building project: every table, view, and later every
 line of application code is written from first principles, with each
