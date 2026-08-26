@@ -39,9 +39,10 @@
 8. **Python connected to the database**: verified the sqlite3 module can
    read from erp_demo.db directly. **[Python]**
 
-9.**First data-generation loop**: fiscal_calendar rebuilt via Python,
-replacing 12 manual INSERTs with a single for-loop and parameterised
-queries (? placeholders). **[Python]**
+9. **Python data generator progressing**: chart_of_accounts, General
+   Ledger, fiscal_calendar, customer, and product tables rebuilt via
+   Python — introducing loops, enumerate, tuple unpacking, and
+   parameterised (`?`) queries as standard practice. **[Python]**
 
 ## Backend (NODE/Express)
 

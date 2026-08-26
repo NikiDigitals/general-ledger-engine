@@ -70,3 +70,16 @@ trigger a fake "not found, install from Store" message due to Windows'
 App Execution Aliases feature. The Python Launcher (`py`) bypasses this
 and works directly — use `py` instead of `python` for all commands in this
 project on Windows.
+
+**Every tuple in a list needs its own complete set of parentheses**
+When building a list of tuples like `[("Top", 5.00, 9.99), ("T-shirt", ...)]`,
+each individual item must be fully wrapped in its own `(...)` — a common
+mistake is to open the first tuple correctly but drop the opening
+parenthesis on subsequent lines, leaving a stray closing bracket with
+nothing to match.
+
+**A column name must sit inside the same parentheses as the others**
+`INSERT INTO product (sku, product_name, ...)` — every column being
+inserted belongs inside one shared set of parentheses. Writing
+`INSERT INTO product sku, (product_name, ...)` separates one column out,
+which SQL cannot parse correctly.

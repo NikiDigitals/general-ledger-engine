@@ -136,8 +136,8 @@ transaction.)_
 
 **Status: not started.**
 
-_(This section will cover the first UI screens, the jump from "no
-JavaScript experience" to a working interface, and the point where the
+_(This section will cover the first UI screens, the jump
+to a working interface, and the point where the
 project stops being something only explorable via a database browser or
 API client.)_
 
