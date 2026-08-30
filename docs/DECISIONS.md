@@ -103,3 +103,25 @@ launched from, while still avoiding any machine-specific hardcoded
 absolute path. The only remaining assumption is that `scripts/` and
 `database/` stay sibling folders, which is already the repo's fixed
 structure.
+
+**One application, one schema — demo and personal use differ only in starting data**
+Rather than building separate "demo mode" and "production mode" logic
+into the backend, the plan is a single application that works identically
+against any database file. `erp_demo.db` starts pre-seeded with the full
+232+ transaction dataset for portfolio visitors to explore and add to; a
+second database file (to be created) starts with only the schema and
+chart of accounts, empty otherwise, for genuine personal use. Which file
+the backend talks to is selected via a `DB_PATH` environment variable, so
+the application code itself never needs to know or care which one it's
+connected to.
+
+**Chart of accounts uses soft-delete (`is_active`), never a hard delete, once used**
+Deleting an account that already appears in `journal_entry_line` would
+break historical postings — they'd reference an account that no longer
+exists. Following standard accounting-system practice, an account already
+in use can only be deactivated (`is_active = 0`), preventing it from being
+selected for new postings while leaving all historical entries intact. A
+true hard delete is only permitted for an account that has never been
+used in any posting. This is a general rule for the project going
+forward: wherever a technical shortcut and an accounting standard
+conflict, the accounting standard wins.

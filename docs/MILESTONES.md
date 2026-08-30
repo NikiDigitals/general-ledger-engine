@@ -71,7 +71,17 @@
 
 ## Backend API (Node/Express)
 
-*(No milestones yet.)*
+12. **Node.js backend initialised**: Express and better-sqlite3 installed,
+    first successful database read from JavaScript confirming the same
+    data accessible from Python is reachable via Node — the foundation
+    for the REST API. **[Node.js]**
+
+13. **First working API endpoint**: a running Express server exposes
+    GET /api/accounts, returning live data from erp_demo.db as JSON —
+    the first time this project's data is reachable over HTTP instead of
+    only through a database browser or script. **[Node.js/Express]**
+    
+
 
 ## Frontend (React)
 
