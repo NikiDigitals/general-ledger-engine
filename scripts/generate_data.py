@@ -1,8 +1,5 @@
 import sqlite3
 
-# TODO: add COGS/Inventory reduction on sale (Dr COGS / Cr Inventory per invoice)
-# TODO: add an opening capital entry (Dr Cash / Cr Common Stock) so Cash doesn't start negative
-
 DB_PATH = "../database/erp_demo.db"
 
 conn = sqlite3.connect(DB_PATH)
@@ -73,6 +70,30 @@ cursor.execute("""
 """)
 
 print("journal_entry and journal_entry_line tables created.")
+
+# --- Opening capital entry ---
+# A business doesn't start at zero — shareholders contribute starting capital.
+# This must be posted before any other transaction, so Cash doesn't drift
+# negative purely because expenses were recorded before any funding was.
+cursor.execute("""
+    INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
+    VALUES (?, ?, ?, ?, ?)
+""", ("2025-01-01", 2025, 1, "Manual", "Opening balance - shareholder capital contribution"))
+
+opening_je_id = cursor.lastrowid
+
+cursor.execute("""
+    INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+    VALUES (?, ?, ?, ?)
+""", (opening_je_id, 1, 1000.00, 0))  # account_id 1 = Cash
+
+cursor.execute("""
+    INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+    VALUES (?, ?, ?, ?)
+""", (opening_je_id, 5, 0, 1000.00))  # account_id 5 = Common Stock
+
+print("Opening capital entry created.")
+
 
 # --- Fiscal Calendar ---
 cursor.execute("DROP TABLE IF EXISTS fiscal_calendar")
@@ -297,6 +318,19 @@ for i in range(1, 6):
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
     """, (new_je_id, 6, 0, amount))  # account_id 6 = Sales Revenue
+
+    # Step 3b: create the matching COGS entry (Dr COGS / Cr Inventory)
+    cogs_amount = amount * 0.5  # simple assumption: cost is 50% of sale price
+
+    cursor.execute("""
+        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+        VALUES (?, ?, ?, ?)
+    """, (new_je_id, 7, cogs_amount, 0))  # account_id 7 = Cost of Goods Sold
+
+    cursor.execute("""
+        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+        VALUES (?, ?, ?, ?)
+    """, (new_je_id, 3, 0, cogs_amount))  # account_id 3 = Inventory
 
     # Step 4: link the invoice back to its journal entry
     cursor.execute("""

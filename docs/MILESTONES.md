@@ -43,9 +43,13 @@
    P2P, and R2R (close_checklist, budget_line) — rebuilt via Python in a
    single script run. Existing SQL views (v_trial_balance, v_ar_aging,
    v_close_status, v_budget_vs_actual, etc.) verified to still work
-   correctly against the Python-rebuilt data. Known gaps (no COGS/Inventory
-   reduction on sale, no opening capital entry) documented as TODOs for
-   the upcoming scale-up phase. **[Python]**
+   correctly against the Python-rebuilt data. Both known gaps identified
+   after initial automation — no opening capital entry, no COGS/Inventory
+   reduction on sale — have since been resolved: an opening capital entry
+   (Dr Cash / Cr Common Stock) now funds the business before any other
+   transaction, and every AR invoice now also posts a matching
+   Dr COGS / Cr Inventory line. The trial balance reflects a realistic,
+   funded position with no outstanding known gaps. **[Python]**
 
 ## Backend API (Node/Express)
 
