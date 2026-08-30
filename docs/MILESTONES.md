@@ -72,16 +72,16 @@
 ## Backend API (Node/Express)
 
 12. **Node.js backend initialised**: Express and better-sqlite3 installed,
-    first successful database read from JavaScript confirming the same
-    data accessible from Python is reachable via Node — the foundation
-    for the REST API. **[Node.js]**
+    first successful database read from JavaScript (`test-connection.js`)
+    confirming the same data accessible from Python and SQL is reachable
+    via Node — the foundation for the REST API. **[Node.js]**
 
 13. **First working API endpoint**: a running Express server exposes
-    GET /api/accounts, returning live data from erp_demo.db as JSON —
+    `GET /api/accounts`, returning live data from erp_demo.db as JSON —
     the first time this project's data is reachable over HTTP instead of
-    only through a database browser or script. **[Node.js/Express]**
-    
-
+    only through a database browser or script. Repository hygiene fixed
+    in the same session: project-wide `.gitignore` added and
+    `node_modules` removed from version control. **[Node.js/Express]**
 
 ## Frontend (React)
 
@@ -98,9 +98,10 @@
 <!--
 Upcoming milestones, to be added once reached:
 
-12. Backend API (Node/Express) built, first endpoint live
-13. Frontend (React) connected to the backend, first invoice created via the UI
-14. Fully running locally: backend + frontend + database together
-15. Deployed on Azure, publicly reachable
-16. Portfolio site write-up published
+14. Full CRUD API: customers, vendors, invoices, reporting views, with
+    accounting-standard soft-delete on chart_of_accounts
+15. Frontend (React) connected to the backend, first invoice created via the UI
+16. Fully running locally: backend + frontend + database together
+17. Deployed on Azure, publicly reachable
+18. Portfolio site write-up published
 -->

@@ -206,14 +206,72 @@ and reading the same balance check.
 
 ## 4. Backend API (Node/Express)
 
-**Status: not started.**
+**Status: in progress.**
 
-_(This section will describe how the database gets exposed over HTTP —
-the first time the project becomes something other than a local database
-file. Expect topics like REST route design, how the balance guarantee
-gets enforced in application code as a second line of defence, and the
-first moment a request from outside SQLite successfully posts a
-transaction.)_
+This phase opened with a first, deliberate installation: Node.js itself,
+followed by `npm init` to create the project and `npm install express` /
+`npm install better-sqlite3` to bring in a web framework and a database
+driver. A short side-by-side comparison with the Python data generator
+made the parallels immediately visible — `sqlite3.connect()` and
+`Database()`, `cursor.execute()` and `db.prepare()`, `cursor.fetchall()`
+and `.all()` — different syntax, the same underlying idea, which made a
+first test script (`test-connection.js`) fast to write and understand: it
+read the same chart of accounts already familiar from every other layer
+of this project, just from a third language now.
+
+The real shift came with `server.js`. Unlike every Python or SQL script
+so far — which runs once, does something, and stops — a server is built
+to keep running indefinitely, listening for requests rather than
+executing top to bottom once. `app.get("/api/accounts", ...)` defined the
+first *route*: a standing instruction for what to do whenever a request
+arrives at that specific address. A couple of small, very typical
+first-server mistakes came up along the way — a missing leading `/` in
+the route path, and using single quotes instead of backticks around a
+template string with `${PORT}` inside it — both fixed by reading the
+error output and the code side by side rather than guessing.
+
+Starting the server and opening `http://localhost:4000/api/accounts` in
+a browser produced the same seven accounts already seen dozens of times
+via DB Browser, Python, and raw SQL — but this time retrieved over an
+actual HTTP request, the same mechanism a real frontend (or anyone else
+on the internet, once deployed) will use. That moment marked the first
+time this project's data became reachable by something other than a
+script or tool running directly on the same machine.
+
+The session closed with a repository-hygiene fix: the project had never
+had a `.gitignore`, so `node_modules` — hundreds of files, all of them
+regenerable with a single `npm install` — had been committed to GitHub
+along with the real backend code. A project-wide `.gitignore` was added
+covering Node, Python, editor, and OS clutter, and `node_modules` was
+removed from Git's tracking with `git rm -r --cached`, without touching
+the actual files on disk.
+
+Two decisions were made explicit before writing any further routes:
+first, that the eventual application will use one schema and one
+codebase for both a portfolio demo (pre-seeded `erp_demo.db`) and genuine
+personal use (a second, empty database file), switched via an
+environment variable rather than separate "modes" in the code; second,
+and more fundamentally, that wherever a technical shortcut and an
+accounting standard conflict for the rest of this project, the accounting
+standard wins — starting with `chart_of_accounts`, which will support
+soft-delete for any account already used in a posting, never a hard
+delete that could orphan historical entries.
+
+**Key realisation:** a server is a genuinely different kind of program
+from anything built so far in this project — not "a script that talks to
+a database," but "a standing service that waits to be asked something."
+Everything from the database schema through the Python generator existed
+to be *run*; the backend exists to *stay running*. That distinction is
+also why the very first successful browser request felt disproportionately
+significant for how small the endpoint actually was: it was the first
+time the project's data left the boundary of "something explored on this
+one machine" and became reachable the way real applications are reached.
+
+_(To be continued: routes for customers, vendors, orders, invoices, and
+reporting views; full CRUD with the accounting-standard soft-delete rule
+in place; and — eventually — the balance guarantee enforced again at the
+application layer as a second line of defence alongside the database
+CHECK constraint.)_
 
 ---
 

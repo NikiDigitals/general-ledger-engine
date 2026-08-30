@@ -161,3 +161,38 @@ script's own location instead —
 folders — makes the script work correctly no matter which directory it's
 launched from, while still avoiding a machine-specific hardcoded absolute
 path.
+
+## Node.js / Express
+
+**Express routes need a leading `/`**
+`app.get("api/accounts", ...)` does not register as a valid route path —
+it must be `app.get("/api/accounts", ...)`. Without the leading slash,
+Express does not treat the string as a proper path, and a request to
+that endpoint fails.
+
+**Template literals need backticks, not quotes**
+`` `text ${variable}` `` only interpolates the variable when wrapped in
+backticks. The same string wrapped in single or double quotes —
+`'text ${variable}'` — is treated as plain text, and prints the literal
+characters `${variable}` instead of its value. Backticks and quotes look
+similar at a glance, especially on a US keyboard where backtick sits
+top-left near Escape, but they are not interchangeable in JavaScript.
+
+**A server is a fundamentally different kind of program from a script**
+Every Python and SQL script in this project so far runs once, does
+something, and exits. `app.listen(PORT, ...)` never returns — the process
+stays alive indefinitely, waiting for incoming requests, until manually
+stopped (Ctrl+C). This is the core mechanical difference between "a
+script that talks to a database" and "a backend."
+
+**No `.gitignore` from the start meant `node_modules` got committed**
+The project had gone all the way from database schema through the Python
+generator without ever needing a `.gitignore`, since none of those layers
+produced generated, regenerable folders. The moment `npm install`
+introduced `node_modules` (hundreds of files, fully reproducible from
+`package.json` alone), the absence of a `.gitignore` meant all of it got
+committed to GitHub. Fixed with a project-wide `.gitignore` plus
+`git rm -r --cached node_modules` to remove it from tracking without
+touching the files on disk. Lesson: add a `.gitignore` at the very start
+of a repository, before the first tool that generates a regenerable
+folder is introduced, rather than retrofitting one after the fact.

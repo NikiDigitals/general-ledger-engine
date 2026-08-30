@@ -116,9 +116,39 @@ The project is tracked in Git and hosted on GitHub
 database file itself, all documentation, and the ERD — so the full state
 of the project at any point is reproducible from the repository alone.
 
+## Backend API layer (Node/Express) — in progress
+
+`backend/server.js` is a running Express server that reads from the same
+`erp_demo.db` used by the Python generator and the SQL views — the same
+database file, three different consumers (SQL client, Python script,
+HTTP server), never a separate copy of the data.
+
+**Live so far:** `GET /api/accounts`, returning the full chart of
+accounts as JSON. Uses `better-sqlite3` — a synchronous SQLite driver for
+Node, chosen deliberately over the more common asynchronous
+`sqlite3` package because synchronous calls read like the Python version
+already built (`db.prepare(...).all()` versus `cursor.execute(...)`;
+`cursor.fetchall()`), which keeps the two languages easy to compare while
+learning.
+
+**Two usage modes decided, not yet built:** a single application and
+schema will serve both a demo database (`erp_demo.db`, pre-seeded) and a
+personal-use database (to be created, starting empty except for the
+chart of accounts), selected via a `DB_PATH` environment variable rather
+than separate application logic — see `DECISIONS.md`.
+
+**Accounting-standard rule for all future CRUD routes:** wherever a
+technical shortcut and an accounting standard conflict, the accounting
+standard wins. Concretely, this means `chart_of_accounts` will support
+soft-delete (`is_active = 0`) for any account already used in a posting,
+and only a true hard delete for an account that has never been posted to
+— never a delete that could orphan historical `journal_entry_line` rows.
+
 ## Still to be built
 
-- Backend (Node/Express) to drive this database via a REST API
+- Additional API routes: customers, vendors, invoices, reporting views,
+  and full CRUD (create/update/delete) per the accounting-standard rule
+  above
 - Frontend (React) for data entry
 - Deployment on Azure (App Service + Static Web Apps)
 
