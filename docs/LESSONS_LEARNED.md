@@ -106,3 +106,58 @@ sense once every intended posting type actually exists. Lesson: "the
 books balance" and "the books are complete" are two different claims: the
 first is guaranteed by the database, the second depends on whether every
 transaction type the business model needs has actually been implemented.
+
+**A fixed random seed makes "random" reproducible**
+`random.seed(42)`, set once at the very top of the script before anything
+else runs, guarantees the exact same sequence of "random" values on every
+run. Without it, a bug that shows up once could vanish on the next run
+simply because different random values happened to be drawn — making it
+impossible to reliably reproduce or verify a fix. The seed value itself
+is arbitrary; what matters is setting one at all.
+
+**Scaling up one step of a pipeline can silently break the next step**
+After rewriting the sales-order generation loop to use randomised data
+instead of a fixed 5-item list, the very next section (`ar_invoice`)
+crashed with `NameError: name 'invoice_amounts' is not defined` — that
+variable only existed in the old, fixed-list version, and the invoice
+section still expected it. The same happened again one step later with
+`vendor_ids`. Lesson: when scaling up or rewriting one stage of a
+multi-stage script, check every later stage that reads variables the
+rewritten stage used to produce — the error often won't appear until
+Python actually reaches that later code.
+
+**`random.random() > threshold` combined with `continue` is a clean way to skip items probabilistically**
+To leave ~20% of sales orders un-invoiced (so AR ageing has real open
+items to report on), each order is checked with
+`if random.random() > 0.8: continue` — `random.random()` returns a value
+between 0.0 and 1.0, so roughly 80% of values fall at or below 0.8 and
+proceed, while the rest skip immediately to the next loop iteration.
+`continue` (rather than wrapping the rest of the loop body in an `if`)
+keeps the "normal path" code unindented and easy to read.
+
+**Building a list during one loop, then reusing it in the next, avoids a redundant query**
+While generating AR invoices, each new invoice's ID, customer, amount, and
+date were appended to a plain Python list (`ar_invoice_ids`). The next
+step (generating cash receipts) then looped directly over that list
+instead of running a fresh `SELECT` to rediscover which invoices exist —
+simpler, and guarantees the two steps stay perfectly in sync with exactly
+the invoices just created in this run.
+
+**`date.fromisoformat()` and `.isoformat()` are inverses**
+SQLite stores dates as plain text (e.g. `"2025-03-15"`). To do arithmetic
+on a date read back from the database (like adding a payment delay with
+`timedelta`), it first needs converting from that text into a real
+`date` object with `date.fromisoformat(text)`; the reverse,
+`some_date.isoformat()`, converts a `date` object back into the exact
+text format SQLite expects for storage.
+
+**A relative path assumes a specific working directory — `__file__` doesn't**
+`DB_PATH = "../database/erp_demo.db"` only resolves correctly if the
+script happens to be launched from inside `scripts/`. That's an easy
+assumption to get wrong, especially for anyone else cloning the repo and
+running the script from a different folder. Building the path from the
+script's own location instead —
+`os.path.dirname(os.path.abspath(__file__))` joined with the relative
+folders — makes the script work correctly no matter which directory it's
+launched from, while still avoiding a machine-specific hardcoded absolute
+path.

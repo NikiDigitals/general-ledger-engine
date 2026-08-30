@@ -13,10 +13,13 @@ design decision and mistake documented along the way.
 The database layer is complete: 17 tables covering the full O2C, P2P, and
 R2R cycles, all built in SQLite. Six reporting views are in place (trial
 balance, AR/AP ageing, income statement, close status, budget vs actual).
-A Python data generator now rebuilds the entire schema and a small test
-dataset programmatically in a single run — the next step is scaling that
-up to hundreds of realistic, randomised transactions across multiple
-months. See [`docs/MILESTONES.md`](docs/MILESTONES.md) for the up-to-date
+The Python data generator is now feature-complete: it rebuilds the entire
+schema from scratch and seeds a realistic single-year demo dataset —
+20 customers, 15 products, 12 vendors, 150 sales orders and 100 purchase
+orders spread across the full year, with realistic invoiced/paid ratios
+(leaving open invoices for AR/AP ageing) — all through controlled
+randomness (`random.seed(42)`, so every run produces the same dataset).
+See [`docs/MILESTONES.md`](docs/MILESTONES.md) for the up-to-date
 progress log, or [`docs/JOURNAL.md`](docs/JOURNAL.md) for the full story
 behind each phase.
 
@@ -40,7 +43,7 @@ roadmap below.
 │   └── erp_demo.db                          # The SQLite database itself
 ├── scripts/
 │   ├── rebuild_database_sql.md              # Every CREATE TABLE / VIEW statement, runnable top to bottom
-│   ├── generate_data.py                     # Python data generator (structure complete, scale-up in progress)
+│   ├── generate_data.py                     # Python data generator (feature-complete)
 │   └── data_generator_python_explained.md   # The same script, section by section, with commentary
 ├── diagrams/
 │   └── ERD.md                               # Entity-relationship diagram (Mermaid)
@@ -70,23 +73,33 @@ Three resources, kept in sync with each other:
 
 - **SQL, step by step**: [`scripts/rebuild_database_sql.md`](scripts/rebuild_database_sql.md)
   — open it, copy each SQL block in order into DB Browser for SQLite's
-  Execute SQL tab (or any SQLite client), and run top to bottom.
+  Execute SQL tab (or any SQLite client), and run top to bottom. Produces
+  a small, fixed test dataset — useful for understanding the schema
+  without any randomness involved.
 - **Python, one command**: `scripts/generate_data.py` — rebuilds all 17
-  tables (O2C, P2P, R2R) and seeds a small hand-picked test dataset in a
-  single run. Known gaps (no COGS/inventory reduction on sale, no opening
-  capital entry) are tracked as TODOs in the script itself, to be resolved
-  as part of the upcoming scale-up to realistic, randomised transaction
-  volume.
+  tables and seeds a full, realistic single-year dataset with a single
+  run (232+ transactions across O2C and P2P, an opening capital entry,
+  and COGS/inventory postings on every sale). Reproducible: the same seed
+  produces the same dataset every time.
 - **Python, explained**: [`scripts/data_generator_python_explained.md`](scripts/data_generator_python_explained.md)
   — the same script broken into sections, with commentary on every new
   Python concept as it's introduced (loops, `enumerate`, tuple unpacking,
-  dictionaries, `cursor.lastrowid`, parameterised queries).
+  dictionaries, `cursor.lastrowid`, parameterised queries, the `random`
+  module, and date arithmetic).
+
+> **Path note:** `generate_data.py` locates the database relative to its
+> own file location (via Python's `__file__`), not relative to whatever
+> folder you happen to run it from — so it works correctly whether it's
+> launched from inside `scripts/`, from the repo root, or via an absolute
+> path. The one assumption that remains is that `scripts/` and
+> `database/` stay siblings (next to each other), which is already the
+> repo's fixed folder structure.
 
 ## Roadmap
 
 - [x] Database schema (17 tables, O2C + P2P + R2R)
 - [x] Reporting views (trial balance, ageing, income statement, budget vs actual)
-- [ ] Python data generator — structure complete; realistic multi-month volume via randomisation still pending
+- [x] Python data generator — feature-complete realistic single-year dataset
 - [ ] Backend API (Node/Express)
 - [ ] Frontend (React)
 - [ ] Deployment (Azure)

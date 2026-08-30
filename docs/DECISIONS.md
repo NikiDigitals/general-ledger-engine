@@ -65,3 +65,41 @@ scripts under version control.
 Account already exists, so fewer new platforms to learn. App Service
 (backend) + Static Web Apps (frontend), both with a free tier — suitable
 for a portfolio demo without monthly costs.
+
+**Fixed random seed (`random.seed(42)`) instead of true randomness**
+Guarantees the generator produces an identical dataset on every run. This
+makes bugs reproducible (a value that looks wrong stays the same wrong
+value the next time the script runs, rather than shifting), keeps
+screenshots and documentation examples permanently accurate, and makes it
+possible to verify a fix by simply re-running the script and comparing
+against a known-good prior result.
+
+**Invoiced/paid ratios deliberately below 100% during scale-up**
+Sales orders and purchase orders are invoiced at ~83%/82% respectively,
+and of those, only ~74%/73% are paid — leaving a deliberate set of open
+invoices in both AR and AP. A dataset where everything is paid instantly
+would make `v_ar_aging`/`v_ap_aging` return nothing meaningful; the
+thresholds were chosen specifically to leave a realistic number of open,
+overdue items for those views to report on.
+
+**COGS costing simplified to a flat 50% of sale price, not yet per-product**
+The scale-up phase prioritised getting a complete, balanced transaction
+cycle working across realistic volume over perfecting cost accuracy.
+Every invoice now correctly reduces Inventory and books COGS, which
+resolves the balance-completeness gap — the remaining refinement (using
+each product's actual `unit_cost` instead of a flat assumption) is
+tracked in `ARCHITECTURE.md` under Future Extensions rather than blocking
+this phase.
+
+**DB_PATH resolved relative to the script's own location, not the working directory**
+An earlier version used a plain relative path (`"../database/erp_demo.db"`),
+which only worked correctly if the script was launched from inside
+`scripts/` — a fragile assumption for a portfolio repo that other people
+will clone and run from whatever folder they happen to be in. Replaced
+with `os.path.dirname(os.path.abspath(__file__))` to locate the script's
+own folder first, then join `../database/erp_demo.db` onto that — making
+the script work correctly regardless of the current working directory it's
+launched from, while still avoiding any machine-specific hardcoded
+absolute path. The only remaining assumption is that `scripts/` and
+`database/` stay sibling folders, which is already the repo's fixed
+structure.

@@ -1,16 +1,19 @@
-# Python Data Generator
+# Python Data Generator — Explained
 
-Complete reference of `scripts/generate_data.py`, built up table by table.
-Every block below has been typed, tested, and verified working. Running
-the full script top to bottom (`py .\generate_data.py`, from inside
-`scripts/`) rebuilds all 17 tables and seeds a small, fixed test dataset
-covering the full O2C and P2P cycles.
+Complete reference of `scripts/generate_data.py` in its current,
+feature-complete form. Every block below has been typed, tested, and
+verified working. Running the full script top to bottom
+(`py .\generate_data.py`, from inside `scripts/`) rebuilds all 17 tables
+and seeds a realistic, reproducible single-year dataset: 232+ transactions
+across O2C and P2P, fully balanced, with an opening capital entry and
+correct COGS/inventory postings on every sale.
 
-> **Known, deliberately deferred gaps** (see `docs/ARCHITECTURE.md` and
-> `docs/LESSONS_LEARNED.md`): no `Dr COGS / Cr Inventory` posting on the
-> sale side, and no opening capital entry. Every individual posting below
-> is still perfectly balanced — these gaps affect the aggregate picture
-> across accounts, not any single transaction's correctness.
+> This document supersedes an earlier draft written while the generator
+> still used a small, fixed 5-record dataset with two known TODOs (no
+> opening capital, no COGS/inventory reduction). Both gaps are resolved
+> below, and every generation step now uses controlled randomness instead
+> of fixed lists — see `docs/JOURNAL.md` section 3 for the full story of
+> how it got here.
 
 ---
 
@@ -18,25 +21,58 @@ covering the full O2C and P2P cycles.
 
 ```python
 import sqlite3
+import random
+import os
+from datetime import date, timedelta
 
-# TODO: add COGS/Inventory reduction on sale (Dr COGS / Cr Inventory per invoice)
-# TODO: add an opening capital entry (Dr Cash / Cr Common Stock) so Cash doesn't start negative
+random.seed(42)
 
-DB_PATH = "../database/erp_demo.db"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(SCRIPT_DIR, "..", "database", "erp_demo.db")
 
 conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
+
+def random_date_2025():
+    start = date(2025, 1, 1)
+    random_days = random.randint(0, 364)
+    return start + timedelta(days=random_days)
 ```
 
-**What this does:** `sqlite3` is Python's built-in module for talking to
-SQLite databases — no installation needed. `conn` is the connection to the
-database file; `cursor` is the tool used to actually run SQL commands
-against it, similar in role to the SQL editor in DB Browser.
-
-`DB_PATH` is a **relative path** — `../database/erp_demo.db` means "go up
-one folder from wherever this script is run, then into `database/`". This
-only works correctly if the script is run from inside the `scripts/`
-folder.
+**What's here and why:**
+- **`sqlite3`** — Python's built-in module for talking to SQLite
+  databases, no installation needed.
+- **`random`** — Python's built-in module for controlled randomness.
+- **`os`** — Python's built-in module for interacting with the operating
+  system, used here purely to build a reliable file path.
+- **`from datetime import date, timedelta`** — `date` represents a
+  calendar date; `timedelta` represents a span of time (e.g. "30 days")
+  that can be added to or subtracted from a `date`.
+- **`random.seed(42)`** — "plants" the random number generator with a
+  fixed starting point. Without this, every run of the script would
+  produce different random data, making bugs impossible to reproduce
+  reliably. With it, every run produces byte-for-byte identical "random"
+  data. The number `42` is arbitrary — any number works, it just has to
+  stay the same between runs to get reproducibility.
+- **`SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))`** — `__file__`
+  is a built-in variable that always holds the path to the current script
+  file. `os.path.abspath(...)` turns that into a full, unambiguous path;
+  `os.path.dirname(...)` then takes just the folder part of it (i.e.
+  wherever `scripts/` happens to live on this particular computer).
+- **`DB_PATH = os.path.join(SCRIPT_DIR, "..", "database", "erp_demo.db")`**
+  — builds the database path *relative to the script's own location*,
+  not relative to whatever folder the script happens to be launched from.
+  `os.path.join(...)` also handles the difference between Windows (`\`)
+  and Mac/Linux (`/`) path separators automatically. The practical result:
+  this script now runs correctly whether it's launched from inside
+  `scripts/`, from the repo root, or via an absolute path from anywhere
+  else — the only assumption left is that `scripts/` and `database/`
+  remain sibling folders, which is already the repo's fixed structure.
+- **`random_date_2025()`** — the first custom function in this project.
+  Rather than repeating the same 3 lines everywhere a random date is
+  needed, this gives it a name and can be called as `random_date_2025()`
+  wherever needed. It picks a random day offset (0 to 364) and adds it to
+  1 January 2025.
 
 ---
 
@@ -76,22 +112,16 @@ for code, name, acc_type, balance in accounts:
 print(f"{len(accounts)} accounts inserted.")
 ```
 
-**Concepts introduced:**
-- **`DROP TABLE IF EXISTS`** — clears the table if it already exists, so
-  the script can be re-run from scratch any number of times without
-  erroring on "table already exists".
-- **`"""..."""` (triple-quoted strings)** — lets a SQL statement span
-  multiple lines, which keeps long `CREATE TABLE` statements readable.
-- **A list of tuples** — `accounts` holds one tuple per account, each with
-  4 values in a fixed order.
-- **`for code, name, acc_type, balance in accounts:`** — unpacks each
-  tuple into four named variables in one step. `acc_type` (not `type`) is
-  used deliberately, since `type` is a reserved Python built-in function.
-- **`?` placeholders** — never build SQL by pasting values directly into a
-  string. The `?` marks are filled in safely from the tuple passed as the
+**Concepts:**
+- **`DROP TABLE IF EXISTS`** — clears the table if it exists, so the
+  script can be re-run any number of times without erroring.
+- **A list of tuples**, unpacked with `for code, name, acc_type, balance
+  in accounts:`. `acc_type` (not `type`) is used deliberately — `type` is
+  a reserved Python built-in function name.
+- **`?` placeholders** — values are never pasted directly into a SQL
+  string. The `?` marks are safely filled from the tuple passed as the
   second argument to `execute()`, which also protects against SQL
-  injection and handles special characters (like an apostrophe in a name)
-  correctly.
+  injection.
 
 ---
 
@@ -132,18 +162,64 @@ cursor.execute("""
 print("journal_entry and journal_entry_line tables created.")
 ```
 
-**Concepts introduced:**
-- **Drop order matters**: `journal_entry_line` is dropped *before*
-  `journal_entry`, because it holds a foreign key pointing to it. Always
+**Concepts:**
+- **Drop order matters**: `journal_entry_line` is dropped before
+  `journal_entry`, because it holds a foreign key pointing to it — always
   drop child tables before parent tables.
 - **`fiscal_year`/`fiscal_period` included directly** in the original
-  `CREATE TABLE` — a deliberate correction versus the earlier hand-written
-  SQL version, where these columns were bolted on later with `ALTER
-  TABLE` once `v_budget_vs_actual` needed them.
+  `CREATE TABLE` — unlike the earlier hand-written SQL version, where
+  these were bolted on later with `ALTER TABLE` once `v_budget_vs_actual`
+  needed them.
+- **The balance CHECK** is the single most important line in the whole
+  schema: it makes it physically impossible to save a line where both
+  debit and credit are zero, or both are non-zero.
 
 ---
 
-## 3. Fiscal Calendar
+## 3. Opening capital entry
+
+```python
+# --- Opening capital entry ---
+# A business doesn't start at zero — shareholders contribute starting capital.
+# This must be posted before any other transaction, so Cash doesn't drift
+# negative purely because expenses were recorded before any funding was.
+cursor.execute("""
+    INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
+    VALUES (?, ?, ?, ?, ?)
+""", ("2025-01-01", 2025, 1, "Manual", "Opening balance - shareholder capital contribution"))
+
+opening_je_id = cursor.lastrowid
+
+cursor.execute("""
+    INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+    VALUES (?, ?, ?, ?)
+""", (opening_je_id, 1, 1000.00, 0))  # account_id 1 = Cash
+
+cursor.execute("""
+    INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+    VALUES (?, ?, ?, ?)
+""", (opening_je_id, 5, 0, 1000.00))  # account_id 5 = Common Stock
+
+print("Opening capital entry created.")
+```
+
+**Why this exists and why it's posted here:** every other transaction in
+this script assumes Cash already has some money in it. Without this
+entry, Cash would only ever show what's left after every expense with no
+funding behind it — a structurally negative, unrealistic balance. Posting
+it immediately after the GL tables exist, before any customer or vendor
+transaction, guarantees it's always the very first entry in the ledger.
+
+**`cursor.lastrowid`** — introduced here for the first time in this
+document, though it's used constantly from this point on: immediately
+after an `INSERT` into a table with an `AUTOINCREMENT` primary key, this
+returns the ID that row was just given. It's how a parent row (here, the
+journal entry header) gets linked to its child rows (its two balancing
+lines) without guessing or hardcoding an ID.
+
+---
+
+## 4. Fiscal Calendar
 
 ```python
 # --- Fiscal Calendar ---
@@ -183,20 +259,17 @@ for month in range(1, 13):
 print("12 fiscal periods inserted.")
 ```
 
-**Concepts introduced:**
-- **`range(1, 13)`** — generates the numbers 1 through 12. The first real
-  loop over numbers instead of a fixed list, replacing 12 manual `INSERT`
-  statements with one correct block of logic.
-- **`f"2025-{month:02d}-01"` (f-strings)** — embeds a variable directly
-  into a string. `{month:02d}` means "format this number as at least 2
-  digits, padded with a leading zero" — so `1` becomes `01`, `12` stays
-  `12`.
-- **`if / elif / else`** — chooses the correct `end_date` depending on
-  which month it is (28, 30, or 31 days).
+**Concepts:**
+- **`range(1, 13)`** — generates 1 through 12, replacing 12 manual
+  `INSERT`s with one correct loop.
+- **`f"2025-{month:02d}-01"`** — an f-string. `{month:02d}` formats the
+  number with at least 2 digits, padded with a leading zero (`1` → `01`).
+- **`if / elif / else`** — picks the right `end_date` (28, 30, or 31 days)
+  depending on the month.
 
 ---
 
-## 4. Customer
+## 5. Customer — first use of combined random name generation
 
 ```python
 # --- Customer ---
@@ -217,13 +290,13 @@ cursor.execute("""
 """)
 print("customer table created.")
 
-customer_names = [
-    "Noordzee Logistics BV",
-    "Delta Retail Group",
-    "Amstel Bouwmaterialen",
-    "Rijnland Foods NV",
-    "Veldkamp Technics"
-]
+company_prefixes = ["Noordzee", "Delta", "Amstel", "Rijnland", "Veldkamp", "Zuiderzee", "Hollandia", "Maasstad", "Vecht", "Wester"]
+company_types = ["Logistics BV", "Retail Group", "Bouwmaterialen", "Foods NV", "Technics", "Handel BV", "Import/Export", "Diensten BV"]
+
+customer_names = []
+for _ in range(20):
+    name = f"{random.choice(company_prefixes)} {random.choice(company_types)}"
+    customer_names.append(name)
 
 for i, name in enumerate(customer_names, start=1):
     customer_code = f"CUST-{i:03d}"
@@ -235,17 +308,22 @@ for i, name in enumerate(customer_names, start=1):
 print(f"{len(customer_names)} customers inserted.")
 ```
 
-**Concepts introduced:**
-- **`enumerate(customer_names, start=1)`** — loops through a list while
-  also producing a running counter (`i`), starting at 1 instead of the
-  default 0. Needed here to build `CUST-001`, `CUST-002`, etc.
-- **`len(customer_names)`** — counts how many items are in a list, used
-  here just to make the final print message accurate without hardcoding a
-  number.
+**Concepts:**
+- **`random.choice(list)`** — picks one random item from a list.
+- **`for _ in range(20):`** — the underscore `_` is a Python convention
+  meaning "I don't need this loop variable, I just want the loop to run
+  20 times."
+- **`.append(...)`** — adds one item to a list that already exists.
+  `customer_names` starts empty (`[]`) and is filled by combining a
+  random prefix and a random type each time — 10×8 = 80 possible
+  combinations, sampled 20 times (occasional repeats are fine for a demo).
+- **`enumerate(customer_names, start=1)`** — unchanged from the original,
+  fixed-list version. It doesn't need to know or care whether the list
+  has 5 items or 20 — it just loops through whatever's there.
 
 ---
 
-## 5. Product
+## 6. Product — cost-based pricing
 
 ```python
 # --- Product ---
@@ -269,13 +347,15 @@ cursor.execute("""
 """)
 print("product table created.")
 
-products = [
-    ("Top", 5.00, 9.99),
-    ("T-shirt", 10.00, 14.99),
-    ("Hoodie", 15.00, 24.99),
-    ("Cardigan", 17.50, 29.99),
-    ("Pullover", 17.50, 29.99)
-]
+product_types = ["Pomp", "Motor", "Sensor", "Frame", "Cilinder", "Ventiel", "Filter", "Aandrijfunit", "Besturingsunit", "Lagerset"]
+product_variants = ["Type A", "Compact", "Pro", "Heavy Duty", "Standaard", "Industrieel"]
+
+products = []
+for _ in range(15):
+    name = f"{random.choice(product_types)} {random.choice(product_variants)}"
+    cost = round(random.uniform(10, 200), 2)
+    price = round(cost * random.uniform(1.5, 2.2), 2)  # sell at 50-120% markup over cost
+    products.append((name, cost, price))
 
 for i, (name, cost, price) in enumerate(products, start=1):
     sku = f"SKU-{1000 + i}"
@@ -287,17 +367,20 @@ for i, (name, cost, price) in enumerate(products, start=1):
 print(f"{len(products)} products inserted.")
 ```
 
-**Concepts introduced:**
-- **`enumerate(products, start=1)` with tuple unpacking** —
-  `for i, (name, cost, price) in enumerate(...)` pulls out the running
-  counter *and* all three values from each tuple in a single line.
-- Every tuple in the list needs its **own complete set of parentheses** —
-  a common mistake is dropping the opening `(` on later lines while
-  keeping the closing `)`.
+**Concepts:**
+- **`random.uniform(min, max)`** — returns a random decimal number
+  between two bounds.
+- **`round(..., 2)`** — rounds to 2 decimal places, needed because
+  `random.uniform()` otherwise produces long, unrealistic decimals.
+- **`price = round(cost * random.uniform(1.5, 2.2), 2)`** — the sale
+  price is deliberately *derived from* the cost, rather than generated
+  independently. This guarantees every product is sold at a profit (a
+  markup between 50% and 120%), instead of risking a random price that
+  happens to fall below cost.
 
 ---
 
-## 6. Sales Order + Sales Order Line
+## 7. Sales Order + Sales Order Line — 30x scale-up
 
 ```python
 # --- Sales Order + Sales Order Line ---
@@ -328,48 +411,56 @@ cursor.execute("""
 """)
 print("sales_order and sales_order_line tables created.")
 
-# Create 5 sales orders, each with 1 line
-customer_ids = [1, 2, 3, 4, 5]
-product_prices = {1: 9.99, 2: 14.99, 3: 24.99, 4: 29.99, 5: 29.99}  # product_id: unit_price
+# Create 150 sales orders, each with 1 line, spread across the year
+NUM_SALES_ORDERS = 150
 
-for i in range(1, 6):
+for i in range(1, NUM_SALES_ORDERS + 1):
     order_number = f"SO-2025-{i:04d}"
-    customer_id = customer_ids[i - 1]
-    product_id = i  # simple mapping for now: order 1 -> product 1, etc.
+    customer_id = random.randint(1, 20)       # 20 customers now exist
+    product_id = random.randint(1, 15)         # 15 products now exist
+    quantity = random.randint(1, 10)
+    order_date = random_date_2025()
+
+    # Look up this product's actual price, instead of guessing
+    cursor.execute("SELECT unit_price FROM product WHERE product_id = ?", (product_id,))
+    unit_price = cursor.fetchone()[0]
 
     cursor.execute("""
         INSERT INTO sales_order (order_number, customer_id, order_date, status)
         VALUES (?, ?, ?, ?)
-    """, (order_number, customer_id, "2025-01-20", "Open"))
+    """, (order_number, customer_id, order_date.isoformat(), "Open"))
 
     new_order_id = cursor.lastrowid
 
     cursor.execute("""
         INSERT INTO sales_order_line (sales_order_id, product_id, quantity, unit_price)
         VALUES (?, ?, ?, ?)
-    """, (new_order_id, product_id, 2, product_prices[product_id]))
+    """, (new_order_id, product_id, quantity, unit_price))
 
-print("5 sales orders with lines inserted.")
+print(f"{NUM_SALES_ORDERS} sales orders with lines inserted.")
 ```
 
-**Concepts introduced — the most important one in this whole script:**
-- **`cursor.lastrowid`** — immediately after an `INSERT` into a table with
-  an `AUTOINCREMENT` primary key, this returns the ID that row was just
-  given. It's how a script (or, later, a backend API) links a parent row
-  to the child rows it's about to create, without having to guess or
-  hardcode an ID.
-- **A `dict` (dictionary)** — `product_prices` maps a product_id to its
-  price using `{key: value}` pairs, retrieved with `product_prices[1]`.
-  Different from a list, which is indexed by position (0, 1, 2...); a dict
-  is indexed by whatever key you choose.
-- **A nested pattern**: for every order created in the loop, its line is
-  created *immediately after*, using the `new_order_id` just captured.
-  This exact "create parent → capture ID → create child" pattern repeats
-  in every section below.
+**Why this section matters most so far:** this is the first time the
+script both *reads* and *writes* within the same operation.
+`cursor.execute("SELECT unit_price FROM product WHERE product_id = ?", (product_id,))`
+followed by `cursor.fetchone()[0]` looks up a real, current price from
+the database instead of guessing or hardcoding one — exactly what a real
+application does on every request.
+
+**Other concepts:**
+- **`random.randint(min, max)`** — a random *whole* number, inclusive of
+  both bounds. Used here for choosing which customer, product, and
+  quantity, unlike `random.uniform()` which gives decimals.
+- **`NUM_SALES_ORDERS = 150`** — a constant in uppercase, a Python
+  convention meaning "an adjustable setting." Changing the demo's scale
+  later means changing only this one number.
+- **`order_date.isoformat()`** — `random_date_2025()` returns a Python
+  `date` object, not text. SQLite needs a text date (`"2025-03-15"`), so
+  `.isoformat()` converts it to exactly that format before storing it.
 
 ---
 
-## 7. AR Invoice — the first automated GL posting
+## 8. AR Invoice — probabilistic invoicing, live-priced COGS
 
 ```python
 # --- AR Invoice ---
@@ -394,64 +485,110 @@ cursor.execute("""
 """)
 print("ar_invoice table created.")
 
-# Turn each sales order into an invoice
-sales_order_ids = [1, 2, 3, 4, 5]
-invoice_amounts = [19.98, 29.98, 49.98, 59.98, 59.98]  # quantity 2 x unit_price, per order
+# Invoice roughly 80% of sales orders, leaving the rest as "Open" orders
+cursor.execute("SELECT sales_order_id, customer_id, order_date FROM sales_order")
+all_orders = cursor.fetchall()
 
-for i in range(1, 6):
-    invoice_number = f"ARINV-2025-{i:04d}"
-    amount = invoice_amounts[i - 1]
+invoice_counter = 0
+ar_invoice_ids = []  # keep track of which invoices exist, for the receipt step next
 
-    # Step 1: create the invoice row (no journal_entry_id yet)
+for order_id, customer_id, order_date_str in all_orders:
+    if random.random() > 0.8:
+        continue  # skip this order — leave it un-invoiced
+
+    invoice_counter += 1
+    invoice_number = f"ARINV-2025-{invoice_counter:04d}"
+
+    # Get the order's line amount (quantity x unit_price)
+    cursor.execute("""
+        SELECT quantity, unit_price FROM sales_order_line WHERE sales_order_id = ?
+    """, (order_id,))
+    quantity, unit_price = cursor.fetchone()
+    amount = round(quantity * unit_price, 2)
+
+    invoice_date = date.fromisoformat(order_date_str)
+    due_date = invoice_date + timedelta(days=30)
+
     cursor.execute("""
         INSERT INTO ar_invoice (invoice_number, customer_id, sales_order_id, invoice_date, due_date, invoice_amount, status)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (invoice_number, customer_ids[i - 1], sales_order_ids[i - 1], "2025-01-20", "2025-02-19", amount, "Open"))
+    """, (invoice_number, customer_id, order_id, invoice_date.isoformat(), due_date.isoformat(), amount, "Open"))
 
     new_invoice_id = cursor.lastrowid
+    ar_invoice_ids.append((new_invoice_id, customer_id, amount, invoice_date))
 
-    # Step 2: create the journal entry header
+    # Post the journal entry header, dated/periodised from the real invoice date
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, ("2025-01-20", 2025, 1, "O2C", f"AR invoice {invoice_number}"))
+    """, (invoice_date.isoformat(), 2025, invoice_date.month, "O2C", f"AR invoice {invoice_number}"))
 
     new_je_id = cursor.lastrowid
 
-    # Step 3: create the two balanced lines (Dr Accounts Receivable / Cr Sales Revenue)
+    # Dr Accounts Receivable / Cr Sales Revenue
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 2, amount, 0))  # account_id 2 = Accounts Receivable
+    """, (new_je_id, 2, amount, 0))
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 6, 0, amount))  # account_id 6 = Sales Revenue
+    """, (new_je_id, 6, 0, amount))
 
-    # Step 4: link the invoice back to its journal entry
+    # Dr Cost of Goods Sold / Cr Inventory (simplified: 50% of sale price)
+    cogs_amount = round(amount * 0.5, 2)
+
+    cursor.execute("""
+        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+        VALUES (?, ?, ?, ?)
+    """, (new_je_id, 7, cogs_amount, 0))
+
+    cursor.execute("""
+        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+        VALUES (?, ?, ?, ?)
+    """, (new_je_id, 3, 0, cogs_amount))
+
     cursor.execute("""
         UPDATE ar_invoice SET journal_entry_id = ? WHERE ar_invoice_id = ?
     """, (new_je_id, new_invoice_id))
 
-print("5 AR invoices created, each with a balanced GL posting.")
+print(f"{invoice_counter} AR invoices created out of {len(all_orders)} orders, each with a balanced GL posting.")
 ```
 
-**Why this section matters most:** this is the first place the script
-does something a real application would also need to do — take one user
-action (raise an invoice) and automatically generate a correct, balanced
-GL posting behind the scenes, with no manual SQL involved. The 4-step
-pattern here (create row → capture ID → post journal entry → link back)
-is exactly what the future backend API will do on each HTTP request,
-just triggered by a loop instead of a click.
+**The most conceptually dense section in the whole script — five new
+ideas at once:**
 
-**Account IDs used** (`2` for Accounts Receivable, `6` for Sales Revenue)
-depend on the order accounts were inserted via *this* script — always
-verify against `chart_of_accounts` before trusting a hardcoded number.
+- **`random.random()`** — returns a float between 0.0 and 1.0. Checking
+  `if random.random() > 0.8: continue` means roughly 80% of values (those
+  at or below 0.8) proceed, and the remaining ~20% skip this order
+  entirely, leaving it un-invoiced.
+- **`continue`** — immediately jumps to the next loop iteration, skipping
+  everything below it for this particular order. This is the first
+  deliberate use of a loop *not* processing every item the same way.
+- **`ar_invoice_ids.append((new_invoice_id, customer_id, amount, invoice_date))`**
+  — a list is built up during this loop, to be reused directly in the
+  cash receipt step next, avoiding a second database query to rediscover
+  which invoices exist.
+- **`date.fromisoformat(order_date_str)`** — the reverse of
+  `.isoformat()`: converts a text date read back from the database into a
+  real Python `date` object, so it can have `timedelta` arithmetic
+  applied to it (`due_date = invoice_date + timedelta(days=30)`).
+- **A four-line posting instead of two**: this journal entry now has four
+  `journal_entry_line` rows under the same `new_je_id` — Dr AR/Cr Revenue
+  *and* Dr COGS/Cr Inventory — proving a single journal entry can have
+  more than 2 lines, as long as total debits still equal total credits.
+
+**Why an ~80% invoice rate is a deliberate choice, not an approximation:**
+a dataset where every order is invoiced immediately would give
+`v_ar_aging` nothing meaningful to report. Leaving a portion of orders
+un-invoiced (and, in the next section, a portion of invoices unpaid)
+produces exactly the kind of open, ageing items a real AR report exists
+to surface.
 
 ---
 
-## 8. Cash Receipt
+## 9. Cash Receipt — reusing the invoice list, variable payment timing
 
 ```python
 # --- Cash Receipt ---
@@ -474,76 +611,71 @@ cursor.execute("""
 """)
 print("cash_receipt table created.")
 
-# Register a cash receipt for each invoice, generating the matching GL posting
-for i in range(1, 6):
-    receipt_number = f"CR-2025-{i:04d}"
-    customer_id = i
-    ar_invoice_id = i
-    amount = invoice_amounts[i - 1]
+# Register a receipt for roughly 75% of invoices, leaving the rest open (for AR ageing)
+receipt_counter = 0
 
-    print(f"--- Processing receipt {i} ---")
+for invoice_id, customer_id, amount, invoice_date in ar_invoice_ids:
+    if random.random() > 0.75:
+        continue  # leave this invoice unpaid
 
-    # Step 1: create the cash_receipt row (no journal_entry_id yet)
+    receipt_counter += 1
+    receipt_number = f"CR-2025-{receipt_counter:04d}"
+
+    # Payment happens sometime between the invoice date and 45 days later
+    days_to_pay = random.randint(1, 45)
+    receipt_date = invoice_date + timedelta(days=days_to_pay)
+
     cursor.execute("""
         INSERT INTO cash_receipt (receipt_number, customer_id, ar_invoice_id, receipt_date, amount, payment_method)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, (receipt_number, customer_id, ar_invoice_id, "2025-02-10", amount, "Bank Transfer"))
+    """, (receipt_number, customer_id, invoice_id, receipt_date.isoformat(), amount, random.choice(["Bank Transfer", "Direct Debit"])))
 
     new_receipt_id = cursor.lastrowid
-    print(f"Created cash receipt with id {new_receipt_id}")
 
-    # Step 2: create the journal entry header for this receipt
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, ("2025-02-10", 2025, 2, "O2C", f"Cash receipt {receipt_number}"))
+    """, (receipt_date.isoformat(), 2025, receipt_date.month, "O2C", f"Cash receipt {receipt_number}"))
 
     new_je_id = cursor.lastrowid
-    print(f"Created journal entry with id {new_je_id}")
-
-    # Step 3: create the two balanced lines (Dr Cash / Cr Accounts Receivable)
-    cursor.execute("""
-        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
-        VALUES (?, ?, ?, ?)
-    """, (new_je_id, 1, amount, 0))  # account_id 1 = Cash
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 2, 0, amount))  # account_id 2 = Accounts Receivable
+    """, (new_je_id, 1, amount, 0))
 
-    print("Journal entry lines created.")
+    cursor.execute("""
+        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+        VALUES (?, ?, ?, ?)
+    """, (new_je_id, 2, 0, amount))
 
-    # Step 4: link the receipt back to its journal entry
     cursor.execute("""
         UPDATE cash_receipt SET journal_entry_id = ? WHERE cash_receipt_id = ?
     """, (new_je_id, new_receipt_id))
 
-    # Step 5: mark the invoice as paid now that the receipt is posted
     cursor.execute("""
         UPDATE ar_invoice SET amount_paid = ?, status = ? WHERE ar_invoice_id = ?
-    """, (amount, "Paid", ar_invoice_id))
+    """, (amount, "Paid", invoice_id))
 
-    print(f"Receipt {i} linked and invoice {ar_invoice_id} marked as paid.")
-
-print("O2C cycle complete: 5 invoices raised, posted, and paid.")
+print(f"{receipt_counter} cash receipts created out of {len(ar_invoice_ids)} invoices.")
+print("O2C cycle scaled up: orders, invoices, and receipts now generated with controlled randomness.")
 ```
 
-**Concepts introduced:**
-- **5 steps instead of 4** — this is the first loop that both creates a
-  new posting *and* updates an existing row (`ar_invoice`) as a
-  consequence. This exact shape — post a transaction, then update
-  something else it affects — recurs constantly in real financial
-  systems.
-- **Indentation discipline**: every line inside this `for` loop must be
-  indented identically. Python uses indentation (not brackets, as SQL
-  does with `()`) to define what belongs inside a loop — a single
-  misaligned line causes an `IndentationError`, especially when adding new
-  lines by hand into an existing loop.
+**Concepts:**
+- **`for invoice_id, customer_id, amount, invoice_date in ar_invoice_ids:`**
+  — loops directly over the list built in the previous section, instead
+  of a fixed `range()` or a fresh `SELECT`. Guarantees this step only
+  ever considers invoices that actually exist from this exact run.
+- **`random.choice(["Bank Transfer", "Direct Debit"])`** — a small
+  realism touch: which payment method was used is itself randomised.
+- **Payment timing (`random.randint(1, 45)` days after the invoice)**
+  means different invoices get paid at different speeds — some quickly,
+  some close to (or past) their 30-day due date — producing a realistic
+  spread once `v_ar_aging` is queried.
 
 ---
 
-## 9. Vendor (Procure-to-Pay begins)
+## 10. Vendor — mirrors Customer
 
 ```python
 # --- Vendor ---
@@ -563,13 +695,13 @@ cursor.execute("""
 """)
 print("vendor table created.")
 
-vendor_names = [
-    "Staal & Zonen Grondstoffen",
-    "EuroPack Verpakkingsmaterialen",
-    "TechParts Wholesale",
-    "GreenPower Energie BV",
-    "OfficeMax Kantoorartikelen"
-]
+vendor_prefixes = ["Staal & Zonen", "EuroPack", "TechParts", "GreenPower", "OfficeMax", "Industria", "Metaalunie", "Connectix", "Bouwgroep", "Precisie", "DataCore", "CleanPro"]
+vendor_types = ["Grondstoffen", "Wholesale", "Diensten BV", "Toeleveranciers", "Services", "Onderhoud BV"]
+
+vendor_names = []
+for _ in range(12):
+    name = f"{random.choice(vendor_prefixes)} {random.choice(vendor_types)}"
+    vendor_names.append(name)
 
 for i, name in enumerate(vendor_names, start=1):
     vendor_code = f"VEND-{i:03d}"
@@ -581,12 +713,12 @@ for i, name in enumerate(vendor_names, start=1):
 print(f"{len(vendor_names)} vendors inserted.")
 ```
 
-No new concepts here — a direct mirror of the `customer` section, with
-`ap_account_id` (4 = Accounts Payable) in place of `ar_account_id`.
+No new concepts — a direct mirror of the customer section, generating 12
+vendors from combined name-parts.
 
 ---
 
-## 10. Purchase Order + Purchase Order Line
+## 11. Purchase Order + Purchase Order Line — mirrors Sales Order
 
 ```python
 # --- Purchase Order + Purchase Order Line ---
@@ -618,39 +750,47 @@ cursor.execute("""
 """)
 print("purchase_order and purchase_order_line tables created.")
 
-# Create 5 purchase orders, each with 1 line (buying stock from a vendor)
-vendor_ids = [1, 2, 3, 4, 5]
-purchase_costs = [5.00, 10.00, 15.00, 17.50, 17.50]  # matches unit_cost per product
+# Create 100 purchase orders, each with 1 line, spread across the year
+NUM_PURCHASE_ORDERS = 100
 
-for i in range(1, 6):
+for i in range(1, NUM_PURCHASE_ORDERS + 1):
     po_number = f"PO-2025-{i:04d}"
-    vendor_id = vendor_ids[i - 1]
-    product_id = i
-    cost = purchase_costs[i - 1]
+    vendor_id = random.randint(1, 12)      # 12 vendors now exist
+    product_id = random.randint(1, 15)      # 15 products now exist
+    quantity = random.randint(5, 30)
+    order_date = random_date_2025()
+
+    # Look up this product's actual cost, instead of guessing
+    cursor.execute("SELECT unit_cost FROM product WHERE product_id = ?", (product_id,))
+    unit_cost = cursor.fetchone()[0]
 
     cursor.execute("""
         INSERT INTO purchase_order (po_number, vendor_id, order_date, status)
         VALUES (?, ?, ?, ?)
-    """, (po_number, vendor_id, "2025-01-10", "Open"))
+    """, (po_number, vendor_id, order_date.isoformat(), "Open"))
 
     new_po_id = cursor.lastrowid
 
     cursor.execute("""
         INSERT INTO purchase_order_line (purchase_order_id, product_id, description, quantity, unit_cost)
         VALUES (?, ?, ?, ?, ?)
-    """, (new_po_id, product_id, None, 10, cost))
+    """, (new_po_id, product_id, None, quantity, unit_cost))
 
-print("5 purchase orders with lines inserted.")
+print(f"{NUM_PURCHASE_ORDERS} purchase orders with lines inserted.")
 ```
 
-**Concept introduced:** `None` — Python's way of writing "no value"/SQL
-`NULL`. Used here for `description`, since a `product_id` is supplied
-instead (the column exists for free-text purchases that aren't tied to a
-catalogue product).
+**One concept unique to this section:** `None` — Python's way of writing
+"no value" / SQL `NULL`. Used for `description`, since a real `product_id`
+is supplied instead (the column exists for free-text purchases not tied
+to a catalogue product, which this generator doesn't currently produce).
+
+Everything else mirrors the sales order section exactly: live-priced
+lookups, `random_date_2025()`, and `cursor.lastrowid` linking each order
+to its line.
 
 ---
 
-## 11. AP Invoice
+## 12. AP Invoice — mirrors AR Invoice (no COGS side needed)
 
 ```python
 # --- AP Invoice ---
@@ -675,55 +815,72 @@ cursor.execute("""
 """)
 print("ap_invoice table created.")
 
-purchase_order_ids = [1, 2, 3, 4, 5]
-ap_invoice_amounts = [50.00, 100.00, 150.00, 175.00, 175.00]  # 10 units x unit_cost, per PO
+# Invoice roughly 85% of purchase orders, leaving the rest as "Open"
+cursor.execute("SELECT purchase_order_id, vendor_id, order_date FROM purchase_order")
+all_pos = cursor.fetchall()
 
-for i in range(1, 6):
-    invoice_number = f"APINV-2025-{i:04d}"
-    amount = ap_invoice_amounts[i - 1]
+ap_invoice_counter = 0
+ap_invoice_ids = []  # keep track of which invoices exist, for the payment step next
 
-    # Step 1: create the invoice row (no journal_entry_id yet)
+for po_id, vendor_id, order_date_str in all_pos:
+    if random.random() > 0.85:
+        continue  # skip this PO — leave it un-invoiced
+
+    ap_invoice_counter += 1
+    invoice_number = f"APINV-2025-{ap_invoice_counter:04d}"
+
+    # Get the PO's line amount (quantity x unit_cost)
+    cursor.execute("""
+        SELECT quantity, unit_cost FROM purchase_order_line WHERE purchase_order_id = ?
+    """, (po_id,))
+    quantity, unit_cost = cursor.fetchone()
+    amount = round(quantity * unit_cost, 2)
+
+    invoice_date = date.fromisoformat(order_date_str)
+    due_date = invoice_date + timedelta(days=30)
+
     cursor.execute("""
         INSERT INTO ap_invoice (invoice_number, vendor_id, purchase_order_id, invoice_date, due_date, invoice_amount, status)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (invoice_number, vendor_ids[i - 1], purchase_order_ids[i - 1], "2025-01-16", "2025-02-15", amount, "Open"))
+    """, (invoice_number, vendor_id, po_id, invoice_date.isoformat(), due_date.isoformat(), amount, "Open"))
 
     new_invoice_id = cursor.lastrowid
+    ap_invoice_ids.append((new_invoice_id, vendor_id, amount, invoice_date))
 
-    # Step 2: create the journal entry header
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, ("2025-01-16", 2025, 1, "P2P", f"AP invoice {invoice_number}"))
+    """, (invoice_date.isoformat(), 2025, invoice_date.month, "P2P", f"AP invoice {invoice_number}"))
 
     new_je_id = cursor.lastrowid
 
-    # Step 3: create the two balanced lines (Dr Inventory / Cr Accounts Payable)
+    # Dr Inventory / Cr Accounts Payable
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 3, amount, 0))  # account_id 3 = Inventory
+    """, (new_je_id, 3, amount, 0))
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 4, 0, amount))  # account_id 4 = Accounts Payable
+    """, (new_je_id, 4, 0, amount))
 
-    # Step 4: link the invoice back to its journal entry
     cursor.execute("""
         UPDATE ap_invoice SET journal_entry_id = ? WHERE ap_invoice_id = ?
     """, (new_je_id, new_invoice_id))
 
-print("5 AP invoices created, each with a balanced GL posting.")
+print(f"{ap_invoice_counter} AP invoices created out of {len(all_pos)} purchase orders, each with a balanced GL posting.")
 ```
 
-Direct mirror of the AR invoice section — same 4-step pattern, opposite
-side of the transaction (Dr Inventory / Cr Accounts Payable instead of
-Dr Accounts Receivable / Cr Sales Revenue).
+Same pattern as AR invoices — probabilistic invoicing, live-priced
+amounts, a list built for reuse in the next section — but only two
+posting lines instead of four, since a purchase increases Inventory
+directly (`Dr Inventory / Cr Accounts Payable`); there's no equivalent of
+the "sale-side COGS" step on the buying side.
 
 ---
 
-## 12. Vendor Payment
+## 13. Vendor Payment — mirrors Cash Receipt
 
 ```python
 # --- Vendor Payment ---
@@ -746,61 +903,63 @@ cursor.execute("""
 """)
 print("vendor_payment table created.")
 
-# Register a vendor payment for each AP invoice
-for i in range(1, 6):
-    payment_number = f"VP-2025-{i:04d}"
-    vendor_id = i
-    ap_invoice_id = i
-    amount = ap_invoice_amounts[i - 1]
+# Register a payment for roughly 80% of AP invoices, leaving the rest open (for AP ageing)
+payment_counter = 0
 
-    # Step 1: create the vendor_payment row (no journal_entry_id yet)
+for invoice_id, vendor_id, amount, invoice_date in ap_invoice_ids:
+    if random.random() > 0.8:
+        continue  # leave this invoice unpaid
+
+    payment_counter += 1
+    payment_number = f"VP-2025-{payment_counter:04d}"
+
+    # Payment happens sometime between the invoice date and 40 days later
+    days_to_pay = random.randint(1, 40)
+    payment_date = invoice_date + timedelta(days=days_to_pay)
+
     cursor.execute("""
         INSERT INTO vendor_payment (payment_number, vendor_id, ap_invoice_id, payment_date, amount, payment_method)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, (payment_number, vendor_id, ap_invoice_id, "2025-02-05", amount, "Bank Transfer"))
+    """, (payment_number, vendor_id, invoice_id, payment_date.isoformat(), amount, "Bank Transfer"))
 
     new_payment_id = cursor.lastrowid
 
-    # Step 2: create the journal entry header
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, ("2025-02-05", 2025, 2, "P2P", f"Vendor payment {payment_number}"))
+    """, (payment_date.isoformat(), 2025, payment_date.month, "P2P", f"Vendor payment {payment_number}"))
 
     new_je_id = cursor.lastrowid
 
-    # Step 3: create the two balanced lines (Dr Accounts Payable / Cr Cash)
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 4, amount, 0))  # account_id 4 = Accounts Payable
+    """, (new_je_id, 4, amount, 0))
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 1, 0, amount))  # account_id 1 = Cash
+    """, (new_je_id, 1, 0, amount))
 
-    # Step 4: link the payment back to its journal entry
     cursor.execute("""
         UPDATE vendor_payment SET journal_entry_id = ? WHERE vendor_payment_id = ?
     """, (new_je_id, new_payment_id))
 
-    # Step 5: mark the invoice as paid now that the payment is posted
     cursor.execute("""
         UPDATE ap_invoice SET amount_paid = ?, status = ? WHERE ap_invoice_id = ?
-    """, (amount, "Paid", ap_invoice_id))
+    """, (amount, "Paid", invoice_id))
 
-print("5 vendor payments created, each linked and invoice marked as paid.")
-print("P2P cycle complete: 5 invoices raised, posted, and paid.")
+print(f"{payment_counter} vendor payments created out of {len(ap_invoice_ids)} invoices.")
+print("P2P cycle scaled up: purchase orders, invoices, and payments now generated with controlled randomness.")
 ```
 
-Mirror of the cash receipt section — same 5-step pattern, opposite
-direction (Dr Accounts Payable / Cr Cash instead of Dr Cash / Cr Accounts
-Receivable).
+Mirror of the cash receipt section — Dr Accounts Payable / Cr Cash
+instead of Dr Cash / Cr Accounts Receivable, otherwise identical in
+structure.
 
 ---
 
-## 13. Close Checklist
+## 14. Close Checklist
 
 ```python
 # --- Close Checklist ---
@@ -836,14 +995,16 @@ for task_name, owner, status in close_tasks:
 print(f"{len(close_tasks)} close checklist tasks inserted.")
 ```
 
-**Concept introduced:** a **composite foreign key** —
+**Concept:** a composite foreign key —
 `FOREIGN KEY (fiscal_year, fiscal_period) REFERENCES fiscal_calendar(fiscal_year, fiscal_period)`
-references *two* columns at once, because `fiscal_calendar`'s primary key
-is itself a combination of both.
+references two columns at once, matching `fiscal_calendar`'s composite
+primary key. This table wasn't scaled up with randomness — it holds a
+fixed, small set of representative close tasks rather than transaction
+volume.
 
 ---
 
-## 14. Budget Line
+## 15. Budget Line
 
 ```python
 # --- Budget Line ---
@@ -878,10 +1039,9 @@ for account_id, budgeted_amount in budgets:
 print(f"{len(budgets)} budget lines inserted.")
 ```
 
-**Concept introduced:** `UNIQUE` across **three columns together** —
-ensures no more than one budget row can exist for the same
-year+period+account combination, without restricting any single column on
-its own.
+**Concept:** `UNIQUE` across three columns together, ensuring no more
+than one budget row can exist for the same year+period+account
+combination.
 
 ---
 
@@ -892,40 +1052,48 @@ conn.commit()
 conn.close()
 ```
 
-**`conn.commit()`** writes everything done so far permanently to the
-database file — the Python equivalent of clicking "Write Changes" in DB
-Browser. Without it, none of the above would actually persist once the
-script finishes. **`conn.close()`** releases the connection cleanly.
+**`conn.commit()`** writes everything permanently to the database file —
+the Python equivalent of "Write Changes" in DB Browser. **`conn.close()`**
+releases the connection cleanly.
 
 ---
 
 ## Full script structure, top to bottom
 
 ```
+Setup                        (imports, seed, connection, random_date_2025())
 1.  Chart of Accounts        (table + 7 accounts)
 2.  General Ledger           (journal_entry + journal_entry_line)
-3.  Fiscal Calendar          (table + 12 periods, via loop)
-4.  Customer                 (table + 5 customers, via loop)
-5.  Product                  (table + 5 products, via loop)
-6.  Sales Order + Line       (table + 5 orders/lines, via loop + lastrowid)
-7.  AR Invoice               (table + 5 invoices + automated GL postings)
-8.  Cash Receipt             (table + 5 receipts + GL postings + invoice updates)
-9.  Vendor                   (table + 5 vendors, via loop)
-10. Purchase Order + Line    (table + 5 POs/lines, via loop + lastrowid)
-11. AP Invoice               (table + 5 invoices + automated GL postings)
-12. Vendor Payment           (table + 5 payments + GL postings + invoice updates)
-13. Close Checklist          (table + 4 tasks)
-14. Budget Line              (table + 2 budgets)
+3.  Opening capital entry    (Dr Cash / Cr Common Stock, €1,000)
+4.  Fiscal Calendar          (table + 12 periods, via loop)
+5.  Customer                 (table + 20 customers, randomised names)
+6.  Product                  (table + 15 products, cost-based pricing)
+7.  Sales Order + Line       (table + 150 orders, live-priced, random dates)
+8.  AR Invoice               (~80% of orders invoiced, 4-line GL posting incl. COGS)
+9.  Cash Receipt             (~75% of invoices paid, variable timing)
+10. Vendor                   (table + 12 vendors, randomised names)
+11. Purchase Order + Line    (table + 100 orders, live-priced, random dates)
+12. AP Invoice               (~85% of POs invoiced, 2-line GL posting)
+13. Vendor Payment           (~80% of invoices paid, variable timing)
+14. Close Checklist          (table + 4 fixed tasks)
+15. Budget Line              (table + 2 fixed budgets)
 conn.commit() / conn.close()
 ```
 
+**Result of a full run:** 232+ transactions across O2C (150 orders / 124
+invoiced / 92 paid) and P2P (100 orders / 82 invoiced / 60 paid), an
+opening capital entry, correct COGS/inventory postings on every sale, and
+a trial balance that sums to exactly zero —
+`SELECT ROUND(SUM(debit_amount) - SUM(credit_amount), 2) FROM journal_entry_line;`
+returns `0.0` regardless of how much randomness was involved in producing
+the data.
+
 ## What's next
 
-This script currently seeds a small, fixed dataset (5 records per core
-entity) — enough to prove every table, constraint, and posting pattern
-works correctly, matching what was first verified by hand in
-`scripts/Database-SQL.md`. The next phase replaces these fixed lists with
-Python's `random` module to generate hundreds of transactions spread
-across multiple months, alongside fixing the two known gaps noted at the
-top of this document (COGS/inventory reduction on sale, opening capital
-entry).
+The data generator is feature-complete for a realistic single-year demo.
+See `docs/ARCHITECTURE.md` under "Future extensions" for possible
+refinements (more accurate per-product COGS costing, discounts,
+reversals, write-offs) that aren't required for the current demo but fit
+the architecture without a redesign. The next major phase on the roadmap
+is the backend API (Node/Express) that will expose this database over
+HTTP.

@@ -51,6 +51,24 @@
    Dr COGS / Cr Inventory line. The trial balance reflects a realistic,
    funded position with no outstanding known gaps. **[Python]**
 
+10. **Sales orders and AR invoices scaled up with controlled randomness**:
+    customers (5→20) and products (5→15) expanded with randomised
+    name-combinations and cost-based pricing; sales orders scaled up 30x
+    (5→150), spread across the full year via a custom random_date_2025()
+    function. ~83% invoiced (124 of 150), ~74% of those paid (92 of 124),
+    leaving 32 open invoices for realistic AR ageing. Introduced
+    random.random() threshold checks, `continue` to skip loop iterations,
+    and building/reusing a list (ar_invoice_ids) across two separate
+    generation steps. **[Python]**
+
+11. **Full data generator scaled up — O2C and P2P**: purchase orders,
+    vendors, AP invoices, and vendor payments scaled up to match the O2C
+    approach (12 vendors, 100 purchase orders, ~82% invoiced, ~73% of
+    those paid). Combined with the O2C scale-up, the generator now
+    produces 232+ transactions with realistic open/paid ratios across
+    both cycles, all still perfectly balanced. The data generator is now
+    feature-complete for a realistic single-year demo dataset. **[Python]**
+
 ## Backend API (Node/Express)
 
 *(No milestones yet.)*
@@ -70,12 +88,9 @@
 <!--
 Upcoming milestones, to be added once reached:
 
-10. Python data generator scaled up: known gaps fixed (COGS/inventory
-    reduction, opening capital entry) and fixed test dataset replaced
-    with hundreds of randomised transactions across multiple months
-11. Backend API (Node/Express) built, first endpoint live
-12. Frontend (React) connected to the backend, first invoice created via the UI
-13. Fully running locally: backend + frontend + database together
-14. Deployed on Azure, publicly reachable
-15. Portfolio site write-up published
+12. Backend API (Node/Express) built, first endpoint live
+13. Frontend (React) connected to the backend, first invoice created via the UI
+14. Fully running locally: backend + frontend + database together
+15. Deployed on Azure, publicly reachable
+16. Portfolio site write-up published
 -->
