@@ -1,9 +1,18 @@
 import sqlite3
+import random
+from datetime import date, timedelta
+
+random.seed(42)
 
 DB_PATH = "../database/erp_demo.db"
 
 conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
+
+def random_date_2025():
+    start = date(2025, 1, 1)
+    random_days = random.randint(0, 364)
+    return start + timedelta(days=random_days)
 
 # --- Chart of Accounts ---
 cursor.execute("DROP TABLE IF EXISTS chart_of_accounts")
@@ -152,13 +161,13 @@ cursor.execute("""
 
 print("customer table created.")
 
-customer_names = [
-    "Noordzee Logistics BV",
-    "Delta Retail Group",
-    "Amstel Bouwmaterialen",
-    "Rijnland Foods NV",
-    "Veldkamp Technics"
-]
+company_prefixes = ["Noordzee", "Delta", "Amstel", "Rijnland", "Veldkamp", "Zuiderzee", "Hollandia", "Maasstad", "Vecht", "Wester"]
+company_types = ["Logistics BV", "Retail Group", "Bouwmaterialen", "Foods NV", "Technics", "Handel BV", "Import/Export", "Diensten BV"]
+
+customer_names = []
+for _ in range(20):
+    name = f"{random.choice(company_prefixes)} {random.choice(company_types)}"
+    customer_names.append(name)
 
 for i, name in enumerate(customer_names, start=1):
     customer_code = f"CUST-{i:03d}"
@@ -191,13 +200,15 @@ CREATE TABLE product(
 """)
 print("product table created.")
 
-products = [
-    ("Top", 5.00 , 9.99), 
-    ("T-shirt", 10.00 , 14.99),
-    ("Hoodie", 15.00, 24.99),
-    ("Cardigan", 17.50, 29.99),
-    ("Pullover" , 17.50, 29.99) 
-]
+product_types = ["Pomp", "Motor", "Sensor", "Frame", "Cilinder", "Ventiel", "Filter", "Aandrijfunit", "Besturingsunit", "Lagerset"]
+product_variants = ["Type A", "Compact", "Pro", "Heavy Duty", "Standaard", "Industrieel"]
+
+products = []
+for _ in range(15):
+    name = f"{random.choice(product_types)} {random.choice(product_variants)}"
+    cost = round(random.uniform(10, 200), 2)
+    price = round(cost * random.uniform(1.5, 2.2), 2)  # sell at 50-120% markup over cost
+    products.append((name, cost, price))
 
 for i, (name, cost, price) in enumerate(products, start=1):
     sku = f"SKU-{1000 +i}"
@@ -237,29 +248,33 @@ cursor.execute("""
 
 print("sales_order and sales_order_line tables created.")
 
+# Create 150 sales orders, each with 1 line, spread across the year
+NUM_SALES_ORDERS = 150
 
-# Create 5 sales orders, each with 1 line
-customer_ids = [1, 2, 3, 4, 5]
-product_prices = {1: 9.99, 2: 14.99, 3: 24.99, 4: 29.99, 5: 29.99}  # product_id: unit_price
-
-for i in range(1, 6):
+for i in range(1, NUM_SALES_ORDERS + 1):
     order_number = f"SO-2025-{i:04d}"
-    customer_id = customer_ids[i - 1]
-    product_id = i  # simple mapping for now: order 1 -> product 1, etc.
+    customer_id = random.randint(1, 20)       # 20 customers now exist
+    product_id = random.randint(1, 15)         # 15 products now exist
+    quantity = random.randint(1, 10)
+    order_date = random_date_2025()
+
+    # Look up this product's actual price, instead of guessing
+    cursor.execute("SELECT unit_price FROM product WHERE product_id = ?", (product_id,))
+    unit_price = cursor.fetchone()[0]
 
     cursor.execute("""
         INSERT INTO sales_order (order_number, customer_id, order_date, status)
         VALUES (?, ?, ?, ?)
-    """, (order_number, customer_id, "2025-01-20", "Open"))
+    """, (order_number, customer_id, order_date.isoformat(), "Open"))
 
     new_order_id = cursor.lastrowid
 
     cursor.execute("""
         INSERT INTO sales_order_line (sales_order_id, product_id, quantity, unit_price)
         VALUES (?, ?, ?, ?)
-    """, (new_order_id, product_id, 2, product_prices[product_id]))
+    """, (new_order_id, product_id, quantity, unit_price))
 
-print("5 sales orders with lines inserted.")
+print(f"{NUM_SALES_ORDERS} sales orders with lines inserted.")
 
 # --- AR Invoice ---
 cursor.execute("DROP TABLE IF EXISTS ar_invoice")
@@ -284,60 +299,72 @@ cursor.execute("""
 
 print("ar_invoice table created.")
 
-# Turn each sales order into an invoice
-sales_order_ids = [1, 2, 3, 4, 5]
-customer_ids = [1, 2, 3, 4, 5]
-invoice_amounts = [19.98, 29.98, 49.98, 59.98, 59.98]  # quantity 2 x unit_price, per order
+# Invoice roughly 80% of sales orders, leaving the rest as "Open" orders
+cursor.execute("SELECT sales_order_id, customer_id, order_date FROM sales_order")
+all_orders = cursor.fetchall()
 
-for i in range(1, 6):
-    invoice_number = f"ARINV-2025-{i:04d}"
-    amount = invoice_amounts[i - 1]
-     # Step 1: create the invoice row (no journal_entry_id yet)
+invoice_counter = 0
+ar_invoice_ids = []  # keep track of which invoices exist, for the receipt step next
+
+for order_id, customer_id, order_date_str in all_orders:
+    if random.random() > 0.8:
+        continue  # skip this order — leave it un-invoiced
+
+    invoice_counter += 1
+    invoice_number = f"ARINV-2025-{invoice_counter:04d}"
+
+    # Get the order's line amount (quantity x unit_price)
+    cursor.execute("""
+        SELECT quantity, unit_price FROM sales_order_line WHERE sales_order_id = ?
+    """, (order_id,))
+    quantity, unit_price = cursor.fetchone()
+    amount = round(quantity * unit_price, 2)
+
+    invoice_date = date.fromisoformat(order_date_str)
+    due_date = invoice_date + timedelta(days=30)
+
     cursor.execute("""
         INSERT INTO ar_invoice (invoice_number, customer_id, sales_order_id, invoice_date, due_date, invoice_amount, status)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (invoice_number, customer_ids[i - 1], sales_order_ids[i - 1], "2025-01-20", "2025-02-19", amount, "Open"))
+    """, (invoice_number, customer_id, order_id, invoice_date.isoformat(), due_date.isoformat(), amount, "Open"))
 
     new_invoice_id = cursor.lastrowid
+    ar_invoice_ids.append((new_invoice_id, customer_id, amount, invoice_date))
 
-    # Step 2: create the journal entry header
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, ("2025-01-20", 2025, 1, "O2C", f"AR invoice {invoice_number}"))
+    """, (invoice_date.isoformat(), 2025, invoice_date.month, "O2C", f"AR invoice {invoice_number}"))
 
     new_je_id = cursor.lastrowid
 
-    # Step 3: create the two balanced lines (Dr Accounts Receivable / Cr Sales Revenue)
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 2, amount, 0))  # account_id 2 = Accounts Receivable
-
-    cursor.execute("""
-        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
-        VALUES (?, ?, ?, ?)
-    """, (new_je_id, 6, 0, amount))  # account_id 6 = Sales Revenue
-
-    # Step 3b: create the matching COGS entry (Dr COGS / Cr Inventory)
-    cogs_amount = amount * 0.5  # simple assumption: cost is 50% of sale price
+    """, (new_je_id, 2, amount, 0))
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 7, cogs_amount, 0))  # account_id 7 = Cost of Goods Sold
+    """, (new_je_id, 6, 0, amount))
+
+    cogs_amount = round(amount * 0.5, 2)
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 3, 0, cogs_amount))  # account_id 3 = Inventory
+    """, (new_je_id, 7, cogs_amount, 0))
 
-    # Step 4: link the invoice back to its journal entry
+    cursor.execute("""
+        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+        VALUES (?, ?, ?, ?)
+    """, (new_je_id, 3, 0, cogs_amount))
+
     cursor.execute("""
         UPDATE ar_invoice SET journal_entry_id = ? WHERE ar_invoice_id = ?
     """, (new_je_id, new_invoice_id))
 
-print("5 AR invoices created, each with a balanced GL posting.")
+print(f"{invoice_counter} AR invoices created out of {len(all_orders)} orders, each with a balanced GL posting.")
 
 # --- Cash Receipt ---
 cursor.execute("DROP TABLE IF EXISTS cash_receipt")
@@ -357,60 +384,58 @@ cursor.execute("""
         FOREIGN KEY (journal_entry_id) REFERENCES journal_entry(journal_entry_id)
     )
 """)
-
 print("cash_receipt table created.")
 
-# Register a cash receipt for each invoice, generating the matching GL posting
-for i in range(1, 6):
-    receipt_number = f"CR-2025-{i:04d}"
-    customer_id = i
-    ar_invoice_id = i
-    amount = invoice_amounts[i - 1]
+# Register a receipt for roughly 75% of invoices, leaving the rest open (for AR ageing)
+receipt_counter = 0
 
-    print(f"--- Processing receipt {i} ---")
+for invoice_id, customer_id, amount, invoice_date in ar_invoice_ids:
+    if random.random() > 0.75:
+        continue  # leave this invoice unpaid
 
-    # Step 1: create the cash_receipt row (no journal_entry_id yet)
+    receipt_counter += 1
+    receipt_number = f"CR-2025-{receipt_counter:04d}"
+
+    # Payment happens sometime between the invoice date and 45 days later
+    days_to_pay = random.randint(1, 45)
+    receipt_date = invoice_date + timedelta(days=days_to_pay)
+
     cursor.execute("""
         INSERT INTO cash_receipt (receipt_number, customer_id, ar_invoice_id, receipt_date, amount, payment_method)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, (receipt_number, customer_id, ar_invoice_id, "2025-02-10", amount, "Bank Transfer"))
+    """, (receipt_number, customer_id, invoice_id, receipt_date.isoformat(), amount, random.choice(["Bank Transfer", "Direct Debit"])))
 
     new_receipt_id = cursor.lastrowid
-    print(f"Created cash receipt with id {new_receipt_id}")
 
-    # Step 2: create the journal entry header for this receipt
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, ("2025-02-10", 2025, 2, "O2C", f"Cash receipt {receipt_number}"))
+    """, (receipt_date.isoformat(), 2025, receipt_date.month, "O2C", f"Cash receipt {receipt_number}"))
 
     new_je_id = cursor.lastrowid
-    print(f"Created journal entry with id {new_je_id}")
-
-    # Step 3: create the two balanced lines (Dr Cash / Cr Accounts Receivable)
-    cursor.execute("""
-        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
-        VALUES (?, ?, ?, ?)
-    """, (new_je_id, 1, amount, 0))  # account_id 1 = Cash
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 2, 0, amount))  # account_id 2 = Accounts Receivable
+    """, (new_je_id, 1, amount, 0))
 
-    print("Journal entry lines created.")
+    cursor.execute("""
+        INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
+        VALUES (?, ?, ?, ?)
+    """, (new_je_id, 2, 0, amount))
 
-    # Step 4: link the receipt back to its journal entry
     cursor.execute("""
         UPDATE cash_receipt SET journal_entry_id = ? WHERE cash_receipt_id = ?
     """, (new_je_id, new_receipt_id))
 
-    # Step 5: mark the invoice as paid now that the receipt is posted
     cursor.execute("""
         UPDATE ar_invoice SET amount_paid = ?, status = ? WHERE ar_invoice_id = ?
-    """, (amount, "Paid", ar_invoice_id))
+    """, (amount, "Paid", invoice_id))
 
-    print(f"Receipt {i} linked and invoice {ar_invoice_id} marked as paid.")
+print(f"{receipt_counter} cash receipts created out of {len(ar_invoice_ids)} invoices.")
+print("O2C cycle scaled up: orders, invoices, and receipts now generated with controlled randomness.")
+
+
 
 # --- Vendor ---
 cursor.execute("DROP TABLE IF EXISTS vendor")
@@ -429,13 +454,14 @@ cursor.execute("""
 """)
 print("vendor table created.")
 
-vendor_names = [
-    "Staal & Zonen Grondstoffen",
-    "EuroPack Verpakkingsmaterialen",
-    "TechParts Wholesale",
-    "GreenPower Energie BV",
-    "OfficeMax Kantoorartikelen"
-]
+vendor_prefixes = ["Staal & Zonen", "EuroPack", "TechParts", "GreenPower", "OfficeMax", "Industria", "Metaalunie", "Connectix", "Bouwgroep", "Precisie", "DataCore", "CleanPro"]
+vendor_types = ["Grondstoffen", "Wholesale", "Diensten BV", "Toeleveranciers", "Services", "Onderhoud BV"]
+
+vendor_names = []
+for _ in range(12):
+    name = f"{random.choice(vendor_prefixes)} {random.choice(vendor_types)}"
+    vendor_names.append(name)
+
 
 for i, name in enumerate(vendor_names, start=1):
     vendor_code = f"VEND-{i:03d}"
@@ -475,29 +501,33 @@ cursor.execute("""
 """)
 print("purchase_order and purchase_order_line tables created.")
 
-# Create 5 purchase orders, each with 1 line (buying stock from a vendor)
-vendor_ids = [1, 2, 3, 4, 5]
-purchase_costs = [5.00, 10.00, 15.00, 17.50, 17.50]  # matches unit_cost per product
+# Create 100 purchase orders, each with 1 line, spread across the year
+NUM_PURCHASE_ORDERS = 100
 
-for i in range(1, 6):
+for i in range(1, NUM_PURCHASE_ORDERS + 1):
     po_number = f"PO-2025-{i:04d}"
-    vendor_id = vendor_ids[i - 1]
-    product_id = i
-    cost = purchase_costs[i - 1]
+    vendor_id = random.randint(1, 12)      # 12 vendors now exist
+    product_id = random.randint(1, 15)      # 15 products now exist
+    quantity = random.randint(5, 30)
+    order_date = random_date_2025()
+
+    # Look up this product's actual cost, instead of guessing
+    cursor.execute("SELECT unit_cost FROM product WHERE product_id = ?", (product_id,))
+    unit_cost = cursor.fetchone()[0]
 
     cursor.execute("""
         INSERT INTO purchase_order (po_number, vendor_id, order_date, status)
         VALUES (?, ?, ?, ?)
-    """, (po_number, vendor_id, "2025-01-10", "Open"))
+    """, (po_number, vendor_id, order_date.isoformat(), "Open"))
 
     new_po_id = cursor.lastrowid
 
     cursor.execute("""
         INSERT INTO purchase_order_line (purchase_order_id, product_id, description, quantity, unit_cost)
         VALUES (?, ?, ?, ?, ?)
-    """, (new_po_id, product_id, None, 10, cost))
+    """, (new_po_id, product_id, None, quantity, unit_cost))
 
-print("5 purchase orders with lines inserted.")
+print(f"{NUM_PURCHASE_ORDERS} purchase orders with lines inserted.")
 
 # --- AP Invoice ---
 cursor.execute("DROP TABLE IF EXISTS ap_invoice")
@@ -521,30 +551,45 @@ cursor.execute("""
 """)
 print("ap_invoice table created.")
 
-purchase_order_ids = [1, 2, 3, 4, 5]
-ap_invoice_amounts = [50.00, 100.00, 150.00, 175.00, 175.00]  # 10 units x unit_cost, per PO
+# Invoice roughly 85% of purchase orders, leaving the rest as "Open"
+cursor.execute("SELECT purchase_order_id, vendor_id, order_date FROM purchase_order")
+all_pos = cursor.fetchall()
 
-for i in range(1, 6):
-    invoice_number = f"APINV-2025-{i:04d}"
-    amount = ap_invoice_amounts[i - 1]
+ap_invoice_counter = 0
+ap_invoice_ids = []  # keep track of which invoices exist, for the payment step next
 
-    # Step 1: create the invoice row (no journal_entry_id yet)
+for po_id, vendor_id, order_date_str in all_pos:
+    if random.random() > 0.85:
+        continue  # skip this PO — leave it un-invoiced
+
+    ap_invoice_counter += 1
+    invoice_number = f"APINV-2025-{ap_invoice_counter:04d}"
+
+    # Get the PO's line amount (quantity x unit_cost)
+    cursor.execute("""
+        SELECT quantity, unit_cost FROM purchase_order_line WHERE purchase_order_id = ?
+    """, (po_id,))
+    quantity, unit_cost = cursor.fetchone()
+    amount = round(quantity * unit_cost, 2)
+
+    invoice_date = date.fromisoformat(order_date_str)
+    due_date = invoice_date + timedelta(days=30)
+
     cursor.execute("""
         INSERT INTO ap_invoice (invoice_number, vendor_id, purchase_order_id, invoice_date, due_date, invoice_amount, status)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (invoice_number, vendor_ids[i - 1], purchase_order_ids[i - 1], "2025-01-16", "2025-02-15", amount, "Open"))
+    """, (invoice_number, vendor_id, po_id, invoice_date.isoformat(), due_date.isoformat(), amount, "Open"))
 
     new_invoice_id = cursor.lastrowid
+    ap_invoice_ids.append((new_invoice_id, vendor_id, amount, invoice_date))
 
-    # Step 2: create the journal entry header
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, ("2025-01-16", 2025, 1, "P2P", f"AP invoice {invoice_number}"))
+    """, (invoice_date.isoformat(), 2025, invoice_date.month, "P2P", f"AP invoice {invoice_number}"))
 
     new_je_id = cursor.lastrowid
 
-    # Step 3: create the two balanced lines (Dr Inventory / Cr Accounts Payable)
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
@@ -555,12 +600,11 @@ for i in range(1, 6):
         VALUES (?, ?, ?, ?)
     """, (new_je_id, 4, 0, amount))  # account_id 4 = Accounts Payable
 
-    # Step 4: link the invoice back to its journal entry
     cursor.execute("""
         UPDATE ap_invoice SET journal_entry_id = ? WHERE ap_invoice_id = ?
     """, (new_je_id, new_invoice_id))
 
-print("5 AP invoices created, each with a balanced GL posting.")
+print(f"{ap_invoice_counter} AP invoices created out of {len(all_pos)} purchase orders, each with a balanced GL posting.")
 
 # --- Vendor Payment ---
 cursor.execute("DROP TABLE IF EXISTS vendor_payment")
@@ -582,51 +626,57 @@ cursor.execute("""
 """)
 print("vendor_payment table created.")
 
-# Register a vendor payment for each AP invoice
-for i in range(1, 6):
-    payment_number = f"VP-2025-{i:04d}"
-    vendor_id = i
-    ap_invoice_id = i
-    amount = ap_invoice_amounts[i - 1]
+# Register a payment for roughly 80% of AP invoices, leaving the rest open (for AP ageing)
+payment_counter = 0
 
-    # Step 1: create the vendor_payment row (no journal_entry_id yet)
+for invoice_id, vendor_id, amount, invoice_date in ap_invoice_ids:
+    if random.random() > 0.8:
+        continue  # leave this invoice unpaid
+
+    payment_counter += 1
+    payment_number = f"VP-2025-{payment_counter:04d}"
+
+    # Payment happens sometime between the invoice date and 40 days later
+    days_to_pay = random.randint(1, 40)
+    payment_date = invoice_date + timedelta(days=days_to_pay)
+
     cursor.execute("""
         INSERT INTO vendor_payment (payment_number, vendor_id, ap_invoice_id, payment_date, amount, payment_method)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, (payment_number, vendor_id, ap_invoice_id, "2025-02-05", amount, "Bank Transfer"))
+    """, (payment_number, vendor_id, invoice_id, payment_date.isoformat(), amount, "Bank Transfer"))
 
     new_payment_id = cursor.lastrowid
 
-    # Step 2: create the journal entry header
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, ("2025-02-05", 2025, 2, "P2P", f"Vendor payment {payment_number}"))
+    """, (payment_date.isoformat(), 2025, payment_date.month, "P2P", f"Vendor payment {payment_number}"))
 
     new_je_id = cursor.lastrowid
 
-    # Step 3: create the two balanced lines (Dr Accounts Payable / Cr Cash)
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 4, amount, 0))  # account_id 4 = Accounts Payable
+    """, (new_je_id, 4, amount, 0))
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 1, 0, amount))  # account_id 1 = Cash
+    """, (new_je_id, 1, 0, amount))
 
-    # Step 4: link the payment back to its journal entry
     cursor.execute("""
         UPDATE vendor_payment SET journal_entry_id = ? WHERE vendor_payment_id = ?
     """, (new_je_id, new_payment_id))
 
-    # Step 5: mark the invoice as paid now that the payment is posted
     cursor.execute("""
         UPDATE ap_invoice SET amount_paid = ?, status = ? WHERE ap_invoice_id = ?
-    """, (amount, "Paid", ap_invoice_id))
+    """, (amount, "Paid", invoice_id))
 
-print("5 vendor payments created, each linked and invoice marked as paid.")
+print(f"{payment_counter} vendor payments created out of {len(ap_invoice_ids)} invoices.")
+print("P2P cycle scaled up: purchase orders, invoices, and payments now generated with controlled randomness.")
+
+
+
 
 # --- Close Checklist ---
 cursor.execute("DROP TABLE IF EXISTS close_checklist")
