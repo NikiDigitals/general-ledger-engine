@@ -1,0 +1,54 @@
+# =============================================================================
+# General Ledger Engine — .gitignore
+# Covers: Node/Express backend, Python data generator, future React frontend,
+# editor/OS clutter, and logs.
+# =============================================================================
+
+# --- Node.js (backend/, and future frontend/) ---
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Python (scripts/) ---
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+.Python
+*.egg-info/
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS-specific clutter ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs ---
+*.log
+logs/
+
+# --- DB Browser for SQLite project files (session settings, not the database itself) ---
+*.sqbpro
+
+# =============================================================================
+# NOTE: erp_demo.db is intentionally NOT ignored.
+# It is committed on purpose so visitors can inspect the actual database
+# immediately without running any scripts first. See docs/DECISIONS.md.
+# If a separate personal-use database file is added later (e.g.
+# erp_production.db), decide deliberately whether that one should be
+# committed too, or added below as an explicit exception.
+# =============================================================================
