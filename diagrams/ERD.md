@@ -15,6 +15,7 @@ erDiagram
         date entry_date
         text source_module
         text description
+        int reverses_journal_entry_id FK
     }
 
     JOURNAL_ENTRY_LINE {
@@ -171,6 +172,7 @@ erDiagram
     JOURNAL_ENTRY ||--o{ JOURNAL_ENTRY_LINE : contains
     CHART_OF_ACCOUNTS ||--o{ JOURNAL_ENTRY_LINE : "posted to"
     FISCAL_CALENDAR ||--o{ JOURNAL_ENTRY : "defines period"
+    JOURNAL_ENTRY ||--o| JOURNAL_ENTRY : reverses
 
     %% --- Order-to-Cash ---
     CUSTOMER ||--o{ SALES_ORDER : places
@@ -224,3 +226,9 @@ transactional table (`AR_INVOICE`, `CASH_RECEIPT`, `AP_INVOICE`,
 `VENDOR_PAYMENT`). This reflects the core architecture decision: the
 General Ledger is the single source of truth, and every financial event in
 any sub-ledger produces a posting there — never the other way around.
+
+`JOURNAL_ENTRY` also has a self-referencing relationship via
+`reverses_journal_entry_id`: a correction entry points back to the
+original entry it reverses, rather than the original ever being edited or
+deleted. This makes the audit trail explicit and queryable — you can
+always find which entry (if any) reversed a given posting.

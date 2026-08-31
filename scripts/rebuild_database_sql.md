@@ -5,11 +5,19 @@ project. Every statement below has been typed, tested, and verified working
 in DB Browser for SQLite. Running this file top to bottom (in the Execute
 SQL tab) rebuilds the entire database from scratch.
 
-> Note: `journal_entry` below includes `fiscal_year` and `fiscal_period`
-> directly in the original `CREATE TABLE`. Historically these were added
-> later via `ALTER TABLE` once `v_budget_vs_actual` needed them — see
-> `LESSONS_LEARNED.md`. This file shows the clean, corrected version so it
-> can be run in one pass without that extra step.
+> Note: `journal_entry` below includes `fiscal_year`, `fiscal_period`, and
+> `reverses_journal_entry_id` directly in the original `CREATE TABLE`.
+> Historically `fiscal_year`/`fiscal_period` were added later via
+> `ALTER TABLE` once `v_budget_vs_actual` needed them, and
+> `reverses_journal_entry_id` was added later still via `ALTER TABLE` to
+> support reversal postings — see `LESSONS_LEARNED.md`. This file shows
+> the clean, corrected version so it can be run in one pass without those
+> extra steps.
+>
+> Note: `ar_invoice` below includes `'Written Off'` in the `status` CHECK
+> constraint directly in the original `CREATE TABLE`. Historically this
+> required rebuilding the table from scratch, since SQLite does not allow
+> a CHECK constraint to be altered directly — see `LESSONS_LEARNED.md`.
 
 ---
 
@@ -25,7 +33,7 @@ CREATE TABLE chart_of_accounts (
 );
 ```
 
-**Sample data (7 accounts used throughout testing):**
+**Sample data (9 accounts used throughout testing):**
 ```sql
 INSERT INTO chart_of_accounts (account_code, account_name, account_type, normal_balance) VALUES
 ('1000', 'Cash and Cash Equivalents', 'Asset',     'Debit'),
@@ -34,8 +42,16 @@ INSERT INTO chart_of_accounts (account_code, account_name, account_type, normal_
 ('2000', 'Accounts Payable',          'Liability', 'Credit'),
 ('3000', 'Common Stock',              'Equity',    'Credit'),
 ('4000', 'Sales Revenue',             'Revenue',   'Credit'),
-('5000', 'Cost of Goods Sold',        'Expense',   'Debit');
+('4100', 'Sales Discounts',           'Revenue',   'Debit'),
+('5000', 'Cost of Goods Sold',        'Expense',   'Debit'),
+('5100', 'Bad Debt Expense',          'Expense',   'Debit');
 ```
+
+`Sales Discounts` is a **contra-revenue** account: it sits under the
+Revenue category (hence the `4100` code, right after `4000`), but carries
+`Debit` as its normal balance — the opposite of a typical Revenue account.
+This keeps the value of discounts given visible on its own line, rather
+than letting it silently reduce the `Sales Revenue` figure directly.
 
 ---
 
@@ -47,12 +63,13 @@ posting impossible.
 
 ```sql
 CREATE TABLE journal_entry (
-    journal_entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    entry_date       DATE NOT NULL,
-    fiscal_year      INTEGER NOT NULL DEFAULT 2025,
-    fiscal_period    INTEGER NOT NULL DEFAULT 1,
-    source_module    TEXT NOT NULL CHECK (source_module IN ('O2C', 'P2P', 'R2R', 'Manual')),
-    description      TEXT
+    journal_entry_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_date                 DATE NOT NULL,
+    fiscal_year                INTEGER NOT NULL DEFAULT 2025,
+    fiscal_period               INTEGER NOT NULL DEFAULT 1,
+    source_module               TEXT NOT NULL CHECK (source_module IN ('O2C', 'P2P', 'R2R', 'Manual')),
+    description                 TEXT,
+    reverses_journal_entry_id   INTEGER REFERENCES journal_entry(journal_entry_id)
 );
 
 CREATE TABLE journal_entry_line (
@@ -108,8 +125,19 @@ CREATE TABLE fiscal_calendar (
 
 ```sql
 INSERT INTO fiscal_calendar (fiscal_year, fiscal_period, period_name, start_date, end_date)
-VALUES (2025, 1, 'January', '2025-01-01', '2025-01-31');
+VALUES
+(2025, 1, 'January', '2025-01-01', '2025-01-31'),
+(2026, 1, 'January', '2026-01-01', '2026-01-31');
 ```
+
+> Note: the composite primary key `(fiscal_year, fiscal_period)` was
+> designed from the start to support multiple years without any schema
+> change — confirmed in practice when 2026 was added to the live database
+> as a plain `INSERT`, no `ALTER TABLE` required. Each additional year
+> needs its own 12 rows (one per month); see `LESSONS_LEARNED.md` for why
+> this repetitive step is a deliberately manual, user-triggered action
+> (`start_new_fiscal_year.py`) rather than an automatic background
+> process.
 
 ---
 
@@ -214,7 +242,7 @@ CREATE TABLE ar_invoice (
     due_date         DATE NOT NULL,
     invoice_amount   NUMERIC NOT NULL,
     amount_paid      NUMERIC DEFAULT 0,
-    status           TEXT DEFAULT 'Open' CHECK (status IN ('Open', 'Partially Paid', 'Paid', 'Overdue')),
+    status           TEXT DEFAULT 'Open' CHECK (status IN ('Open', 'Partially Paid', 'Paid', 'Overdue', 'Written Off')),
     journal_entry_id INTEGER,
     FOREIGN KEY (customer_id) REFERENCES customer(customer_id),
     FOREIGN KEY (sales_order_id) REFERENCES sales_order(sales_order_id),
