@@ -1,16 +1,20 @@
 import sqlite3
 import random
+import os
+import calendar
 from datetime import date, timedelta
 
 random.seed(42)
+CURRENT_YEAR = 2025
 
-DB_PATH = "../database/erp_demo.db"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(SCRIPT_DIR, "..", "database", "erp_demo.db")
 
 conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
 
-def random_date_2025():
-    start = date(2025, 1, 1)
+def random_date(year):
+    start = date(year, 1, 1)
     random_days = random.randint(0, 364)
     return start + timedelta(days=random_days)
 
@@ -35,7 +39,9 @@ accounts = [
     ("2000", "Accounts Payable", "Liability", "Credit"),
     ("3000", "Common Stock", "Equity", "Credit"),
     ("4000", "Sales Revenue", "Revenue", "Credit"),
+    ("4100", "Sales Discounts", "Revenue", "Debit"),
     ("5000", "Cost of Goods Sold", "Expense", "Debit"),
+    ("5100", "Bad Debt Expense", "Expense", "Debit"),
 ]
 
 for code, name, acc_type, balance in accounts:
@@ -57,7 +63,8 @@ cursor.execute("""
         fiscal_year      INTEGER NOT NULL,
         fiscal_period    INTEGER NOT NULL,
         source_module    TEXT NOT NULL CHECK (source_module IN ('O2C', 'P2P', 'R2R', 'Manual')),
-        description      TEXT
+        description      TEXT,
+        reverses_journal_entry_id  INTEGER REFERENCES journal_entry(journal_entry_id)
     )
 """)
 
@@ -87,7 +94,7 @@ print("journal_entry and journal_entry_line tables created.")
 cursor.execute("""
     INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
     VALUES (?, ?, ?, ?, ?)
-""", ("2025-01-01", 2025, 1, "Manual", "Opening balance - shareholder capital contribution"))
+""", (f"{CURRENT_YEAR}-01-01", CURRENT_YEAR, 1, "Manual", "Opening balance - shareholder capital contribution"))
 
 opening_je_id = cursor.lastrowid
 
@@ -121,26 +128,24 @@ cursor.execute("""
 
 print("fiscal_calendar table created.")
 
-# Genereer alle 12 maanden voor fiscal year 2025
+# Genereer alle 12 maanden voor het opgegeven fiscal year
 period_names = ["January", "February", "March", "April", "May", "June",
                  "July", "August", "September", "October", "November", "December"]
 
 for month in range(1, 13):
     period_name = period_names[month - 1]
-    start_date = f"2025-{month:02d}-01"
-    if month == 2:
-        end_date = "2025-02-28"
-    elif month in [4, 6, 9, 11]:
-        end_date = f"2025-{month:02d}-30"
-    else:
-        end_date = f"2025-{month:02d}-31"
+    _, days_in_month = calendar.monthrange(CURRENT_YEAR, month)
+    start_date = f"{CURRENT_YEAR}-{month:02d}-01"
+    end_date = f"{CURRENT_YEAR}-{month:02d}-{days_in_month:02d}"
 
     cursor.execute("""
         INSERT INTO fiscal_calendar (fiscal_year, fiscal_period, period_name, start_date, end_date)
         VALUES (?, ?, ?, ?, ?)
-    """, (2025, month, period_name, start_date, end_date))
+    """, (CURRENT_YEAR, month, period_name, start_date, end_date))
 
 print("12 fiscal periods inserted.")
+
+
 
 # --- Customer ---
 cursor.execute("DROP TABLE IF EXISTS customer")
@@ -252,11 +257,11 @@ print("sales_order and sales_order_line tables created.")
 NUM_SALES_ORDERS = 150
 
 for i in range(1, NUM_SALES_ORDERS + 1):
-    order_number = f"SO-2025-{i:04d}"
+    order_number = f"SO-{CURRENT_YEAR}-{i:04d}"
     customer_id = random.randint(1, 20)       # 20 customers now exist
     product_id = random.randint(1, 15)         # 15 products now exist
     quantity = random.randint(1, 10)
-    order_date = random_date_2025()
+    order_date = random_date(CURRENT_YEAR)
 
     # Look up this product's actual price, instead of guessing
     cursor.execute("SELECT unit_price FROM product WHERE product_id = ?", (product_id,))
@@ -289,7 +294,7 @@ cursor.execute("""
         due_date         DATE NOT NULL,
         invoice_amount   NUMERIC NOT NULL,
         amount_paid      NUMERIC DEFAULT 0,
-        status           TEXT DEFAULT 'Open' CHECK (status IN ('Open', 'Partially Paid', 'Paid', 'Overdue')),
+        status           TEXT DEFAULT 'Open' CHECK (status IN ('Open', 'Partially Paid', 'Paid', 'Overdue', 'Written Off')),
         journal_entry_id INTEGER,
         FOREIGN KEY (customer_id) REFERENCES customer(customer_id),
         FOREIGN KEY (sales_order_id) REFERENCES sales_order(sales_order_id),
@@ -311,7 +316,7 @@ for order_id, customer_id, order_date_str in all_orders:
         continue  # skip this order — leave it un-invoiced
 
     invoice_counter += 1
-    invoice_number = f"ARINV-2025-{invoice_counter:04d}"
+    invoice_number = f"ARINV-{CURRENT_YEAR}-{invoice_counter:04d}"
 
     # Get the order's line amount (quantity x unit_price)
     cursor.execute("""
@@ -334,7 +339,7 @@ for order_id, customer_id, order_date_str in all_orders:
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, (invoice_date.isoformat(), 2025, invoice_date.month, "O2C", f"AR invoice {invoice_number}"))
+    """, (invoice_date.isoformat(), CURRENT_YEAR, invoice_date.month, "O2C", f"AR invoice {invoice_number}"))
 
     new_je_id = cursor.lastrowid
 
@@ -394,7 +399,7 @@ for invoice_id, customer_id, amount, invoice_date in ar_invoice_ids:
         continue  # leave this invoice unpaid
 
     receipt_counter += 1
-    receipt_number = f"CR-2025-{receipt_counter:04d}"
+    receipt_number = f"CR-{CURRENT_YEAR}-{receipt_counter:04d}"
 
     # Payment happens sometime between the invoice date and 45 days later
     days_to_pay = random.randint(1, 45)
@@ -410,7 +415,7 @@ for invoice_id, customer_id, amount, invoice_date in ar_invoice_ids:
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, (receipt_date.isoformat(), 2025, receipt_date.month, "O2C", f"Cash receipt {receipt_number}"))
+    """, (receipt_date.isoformat(), CURRENT_YEAR, receipt_date.month, "O2C", f"Cash receipt {receipt_number}"))
 
     new_je_id = cursor.lastrowid
 
@@ -505,11 +510,11 @@ print("purchase_order and purchase_order_line tables created.")
 NUM_PURCHASE_ORDERS = 100
 
 for i in range(1, NUM_PURCHASE_ORDERS + 1):
-    po_number = f"PO-2025-{i:04d}"
+    po_number = f"PO-{CURRENT_YEAR}-{i:04d}"
     vendor_id = random.randint(1, 12)      # 12 vendors now exist
     product_id = random.randint(1, 15)      # 15 products now exist
     quantity = random.randint(5, 30)
-    order_date = random_date_2025()
+    order_date = random_date(CURRENT_YEAR)
 
     # Look up this product's actual cost, instead of guessing
     cursor.execute("SELECT unit_cost FROM product WHERE product_id = ?", (product_id,))
@@ -563,7 +568,7 @@ for po_id, vendor_id, order_date_str in all_pos:
         continue  # skip this PO — leave it un-invoiced
 
     ap_invoice_counter += 1
-    invoice_number = f"APINV-2025-{ap_invoice_counter:04d}"
+    invoice_number = f"APINV-{CURRENT_YEAR}-{ap_invoice_counter:04d}"
 
     # Get the PO's line amount (quantity x unit_cost)
     cursor.execute("""
@@ -586,7 +591,7 @@ for po_id, vendor_id, order_date_str in all_pos:
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, (invoice_date.isoformat(), 2025, invoice_date.month, "P2P", f"AP invoice {invoice_number}"))
+    """, (invoice_date.isoformat(), CURRENT_YEAR, invoice_date.month, "P2P", f"AP invoice {invoice_number}"))
 
     new_je_id = cursor.lastrowid
 
@@ -634,7 +639,7 @@ for invoice_id, vendor_id, amount, invoice_date in ap_invoice_ids:
         continue  # leave this invoice unpaid
 
     payment_counter += 1
-    payment_number = f"VP-2025-{payment_counter:04d}"
+    payment_number = f"VP-{CURRENT_YEAR}-{payment_counter:04d}"
 
     # Payment happens sometime between the invoice date and 40 days later
     days_to_pay = random.randint(1, 40)
@@ -650,7 +655,7 @@ for invoice_id, vendor_id, amount, invoice_date in ap_invoice_ids:
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
-    """, (payment_date.isoformat(), 2025, payment_date.month, "P2P", f"Vendor payment {payment_number}"))
+    """, (payment_date.isoformat(), CURRENT_YEAR, payment_date.month, "P2P", f"Vendor payment {payment_number}"))
 
     new_je_id = cursor.lastrowid
 
@@ -706,7 +711,7 @@ for task_name, owner, status in close_tasks:
     cursor.execute("""
         INSERT INTO close_checklist (fiscal_year, fiscal_period, task_name, task_owner, status)
         VALUES (?, ?, ?, ?, ?)
-    """, (2025, 1, task_name, owner, status))
+    """, (CURRENT_YEAR, 1, task_name, owner, status))
 
 print(f"{len(close_tasks)} close checklist tasks inserted.")
 
@@ -737,7 +742,7 @@ for account_id, budgeted_amount in budgets:
     cursor.execute("""
         INSERT INTO budget_line (fiscal_year, fiscal_period, account_id, budgeted_amount)
         VALUES (?, ?, ?, ?)
-    """, (2025, 1, account_id, budgeted_amount))
+    """, (CURRENT_YEAR, 1, account_id, budgeted_amount))
 
 print(f"{len(budgets)} budget lines inserted.")
 
