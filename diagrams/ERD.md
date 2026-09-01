@@ -13,6 +13,8 @@ erDiagram
     JOURNAL_ENTRY {
         int journal_entry_id PK
         date entry_date
+        int fiscal_year
+        int fiscal_period
         text source_module
         text description
         int reverses_journal_entry_id FK
@@ -172,7 +174,7 @@ erDiagram
     JOURNAL_ENTRY ||--o{ JOURNAL_ENTRY_LINE : contains
     CHART_OF_ACCOUNTS ||--o{ JOURNAL_ENTRY_LINE : "posted to"
     FISCAL_CALENDAR ||--o{ JOURNAL_ENTRY : "defines period"
-    JOURNAL_ENTRY ||--o| JOURNAL_ENTRY : reverses
+    JOURNAL_ENTRY ||--o| JOURNAL_ENTRY : "reverses (self-referencing)"
 
     %% --- Order-to-Cash ---
     CUSTOMER ||--o{ SALES_ORDER : places
@@ -218,17 +220,35 @@ erDiagram
 - `||--o|` means "exactly one, to zero-or-one" — e.g. a `SALES_ORDER` is
   invoiced at most once (into a single `AR_INVOICE`), but not every order
   has to be invoiced yet.
+- The `JOURNAL_ENTRY ||--o| JOURNAL_ENTRY : "reverses (self-referencing)"`
+  line is a **self-referencing relationship**: a table pointing back to
+  its own primary key. It represents `reverses_journal_entry_id` — an
+  optional link from a correction entry to the original entry it
+  corrects. No entry currently uses this in the seeded demo data; the
+  schema is ready for it, but no application logic creates a reversal
+  yet.
 
 ## Design principle visible in this diagram
 
 Notice that `JOURNAL_ENTRY` sits at the centre, connected to every
 transactional table (`AR_INVOICE`, `CASH_RECEIPT`, `AP_INVOICE`,
-`VENDOR_PAYMENT`). This reflects the core architecture decision: the
-General Ledger is the single source of truth, and every financial event in
-any sub-ledger produces a posting there — never the other way around.
+`VENDOR_PAYMENT`) and now also to itself. This reflects the core
+architecture decision: the General Ledger is the single source of truth,
+every financial event in any sub-ledger produces a posting there, and any
+future correction to that posting is itself a new, traceable posting —
+never a silent edit or deletion of the original.
 
-`JOURNAL_ENTRY` also has a self-referencing relationship via
-`reverses_journal_entry_id`: a correction entry points back to the
-original entry it reverses, rather than the original ever being edited or
-deleted. This makes the audit trail explicit and queryable — you can
-always find which entry (if any) reversed a given posting.
+## What's not shown
+
+`chart_of_accounts` gained two additional *rows* (`Sales Discounts`,
+`Bad Debt Expense`) as part of the same schema extension that added
+`reverses_journal_entry_id` — this diagram shows table *structure*, not
+data, so those new accounts don't appear here; see
+`scripts/rebuild_database_sql.md` section 1 for the full account list.
+
+## How to preview this before committing
+
+Paste the code block above (without the outer ` ```mermaid ` fence) into
+the [Mermaid Live Editor](https://mermaid.live) to see the rendered
+diagram instantly. Once this file is committed to GitHub, it renders
+automatically wherever it's linked or viewed — no extra tool needed.

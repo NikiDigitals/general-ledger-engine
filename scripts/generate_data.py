@@ -220,7 +220,7 @@ for i, (name, cost, price) in enumerate(products, start=1):
     cursor.execute("""
         INSERT INTO product (sku, product_name, unit_cost, unit_price,  revenue_account_id, cogs_account_id, inventory_account_id)
        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (sku, name, cost, price, 2, 7, 3))
+    """, (sku, name, cost, price, 6, 8, 3))
 
 print(f"{len(products)} products inserted.")
 
@@ -358,7 +358,7 @@ for order_id, customer_id, order_date_str in all_orders:
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 7, cogs_amount, 0))
+    """, (new_je_id, 8, cogs_amount, 0))
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -735,7 +735,7 @@ print("budget_line table created.")
 
 budgets = [
     (6, 200.00),   # account_id 6 = Sales Revenue
-    (7, 400.00),   # account_id 7 = Cost of Goods Sold
+    (8, 400.00),   # account_id 7 = Cost of Goods Sold
 ]
 
 for account_id, budgeted_amount in budgets:

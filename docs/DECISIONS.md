@@ -125,3 +125,41 @@ true hard delete is only permitted for an account that has never been
 used in any posting. This is a general rule for the project going
 forward: wherever a technical shortcut and an accounting standard
 conflict, the accounting standard wins.
+
+**Backend switched from Node.js/Express to Python/FastAPI mid-project**
+The original Express implementation was working correctly (first
+endpoint live, tested), but the decision was made to switch to
+Python/FastAPI to align with the technology stack of a larger, related
+personal project (LES), so backend skills built here transfer directly
+rather than needing to be relearned in a different language later. The
+superseded Node/Express code was renamed to `backend-node-exploration/`
+rather than deleted — it remains a documented, visible record of a
+deliberate technology choice, not a discarded false start.
+
+**Fiscal year additions are a manual, user-triggered script, never automatic**
+`scripts/start_new_fiscal_year.py` must be run explicitly by the person
+maintaining the database; nothing in the application checks the current
+date and silently creates a new year on its own. A fiscal year-end is a
+conscious, controlled event in real accounting practice, and the schema's
+composite primary key on `fiscal_calendar` already supports this without
+any automatic mechanism being necessary.
+
+**A single `CURRENT_YEAR` constant instead of hardcoding the year throughout**
+`generate_data.py` originally had the literal year typed in dozens of
+places (table names, invoice number formats, journal entry dates).
+Replaced with one constant at the top of the script that everything else
+reads from, and a `random_date(year)` function taking the year as a
+parameter instead of having a specific year in its name. This is a
+general pattern worth repeating in future projects: any value repeated
+more than a couple of times in a script is a candidate for a single named
+constant.
+
+**Reporting views use `julianday('now')`, not a fixed reference date**
+`v_ar_aging`/`v_ap_aging` originally used a hardcoded `'2025-12-15'` so
+that demo screenshots and worked examples would always show the same,
+reproducible ageing buckets regardless of when the query was actually
+run. That was correct for a single-year, screenshot-driven demo, but
+wrong for the database's intended ongoing personal use, where "how many
+days overdue" must always be measured against the real, current date.
+Switched to SQLite's built-in `'now'` keyword once genuine multi-year use
+became the actual goal, not just a demo.

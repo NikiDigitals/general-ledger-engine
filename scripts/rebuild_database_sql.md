@@ -1,4 +1,4 @@
-# Database Instructions
+# Database Instructions (SQL)
 
 Complete reference of the SQLite database built so far for the Finance ERP
 project. Every statement below has been typed, tested, and verified working
@@ -18,6 +18,12 @@ SQL tab) rebuilds the entire database from scratch.
 > constraint directly in the original `CREATE TABLE`. Historically this
 > required rebuilding the table from scratch, since SQLite does not allow
 > a CHECK constraint to be altered directly — see `LESSONS_LEARNED.md`.
+>
+> Note: `v_ar_aging` and `v_ap_aging` below use `julianday('now')` as the
+> reference date, not a fixed date. An earlier version used a hardcoded
+> `'2025-12-15'` for reproducible demo screenshots — correct for a
+> single-year demo, but wrong for genuine ongoing use, where "today"
+> must always mean today. See `DECISIONS.md`.
 
 ---
 
@@ -527,17 +533,17 @@ SELECT
     c.customer_name,
     ai.due_date,
     ai.invoice_amount - ai.amount_paid AS open_amount,
-    CAST(julianday('2025-12-15') - julianday(ai.due_date) AS INTEGER) AS days_past_due,
+    CAST(julianday('now') - julianday(ai.due_date) AS INTEGER) AS days_past_due,
     CASE
-        WHEN julianday('2025-12-15') - julianday(ai.due_date) <= 0 THEN 'Not Due'
-        WHEN julianday('2025-12-15') - julianday(ai.due_date) <= 30 THEN '1-30 days'
-        WHEN julianday('2025-12-15') - julianday(ai.due_date) <= 60 THEN '31-60 days'
-        WHEN julianday('2025-12-15') - julianday(ai.due_date) <= 90 THEN '61-90 days'
+        WHEN julianday('now') - julianday(ai.due_date) <= 0 THEN 'Not Due'
+        WHEN julianday('now') - julianday(ai.due_date) <= 30 THEN '1-30 days'
+        WHEN julianday('now') - julianday(ai.due_date) <= 60 THEN '31-60 days'
+        WHEN julianday('now') - julianday(ai.due_date) <= 90 THEN '61-90 days'
         ELSE '90+ days'
     END AS aging_bucket
 FROM ar_invoice ai
 JOIN customer c ON c.customer_id = ai.customer_id
-WHERE ai.status != 'Paid';
+WHERE ai.status NOT IN ('Paid', 'Written Off');
 ```
 
 ### v_ap_aging
@@ -548,12 +554,12 @@ SELECT
     c.vendor_name,
     ai.due_date,
     ai.invoice_amount - ai.amount_paid AS open_amount,
-    CAST(julianday('2025-12-15') - julianday(ai.due_date) AS INTEGER) AS days_past_due,
+    CAST(julianday('now') - julianday(ai.due_date) AS INTEGER) AS days_past_due,
     CASE
-        WHEN julianday('2025-12-15') - julianday(ai.due_date) <= 0 THEN 'Not Due'
-        WHEN julianday('2025-12-15') - julianday(ai.due_date) <= 30 THEN '1-30 days'
-        WHEN julianday('2025-12-15') - julianday(ai.due_date) <= 60 THEN '31-60 days'
-        WHEN julianday('2025-12-15') - julianday(ai.due_date) <= 90 THEN '61-90 days'
+        WHEN julianday('now') - julianday(ai.due_date) <= 0 THEN 'Not Due'
+        WHEN julianday('now') - julianday(ai.due_date) <= 30 THEN '1-30 days'
+        WHEN julianday('now') - julianday(ai.due_date) <= 60 THEN '31-60 days'
+        WHEN julianday('now') - julianday(ai.due_date) <= 90 THEN '61-90 days'
         ELSE '90+ days'
     END AS aging_bucket
 FROM ap_invoice ai
@@ -620,6 +626,29 @@ SELECT * FROM v_budget_vs_actual;
 
 ---
 
+## 16. Starting a new fiscal year
+
+`fiscal_calendar`'s composite primary key (`fiscal_year`, `fiscal_period`)
+supports multiple years without any schema change — adding a year is
+purely a matter of inserting 12 more rows. This is done via a small,
+deliberately **manual, user-triggered** script
+(`scripts/start_new_fiscal_year.py`), not an automatic background
+process — a fiscal year-end is a conscious, controlled event in real
+accounting, not something that should happen silently. See that script's
+own explained documentation and `docs/DECISIONS.md` for the reasoning.
+
+```sql
+-- What the script does, expressed as plain SQL (illustrative — the real
+-- script determines the next year automatically instead of hardcoding it):
+INSERT INTO fiscal_calendar (fiscal_year, fiscal_period, period_name, start_date, end_date)
+VALUES
+(2027, 1, 'January', '2027-01-01', '2027-01-31'),
+(2027, 2, 'February', '2027-02-01', '2027-02-28');
+-- ... one row per month, 12 total
+```
+
+---
+
 ## After running this file
 
 Remember to click **Write Changes** in DB Browser to persist everything to
@@ -628,7 +657,7 @@ disk — none of the above is permanent until you do.
 ## What's next
 
 The data above is minimal, hand-typed test data — enough to prove every
-constraint and view works correctly, but not enough to look like a real
-demo. The next phase (Python data generator) replaces this with hundreds of
-realistic transactions generated in seconds, while reusing exactly this
-same schema.
+constraint and view works correctly. `scripts/generate_data.py` builds
+this same schema (plus the reversal/write-off/multi-year support noted
+above) and seeds it with 232+ realistic, randomised transactions in a
+single run — see `scripts/data_generator_python_explained.md`.

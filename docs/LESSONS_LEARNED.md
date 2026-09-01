@@ -62,6 +62,39 @@ schema grows, earlier tables sometimes need columns that only become
 necessary once a later feature is designed — this is normal, not a sign of
 bad initial design.
 
+**Documentation drifts from the real code the moment a change is made outside the documented workflow**
+A round of schema changes (reversals column, write-off status, new
+accounts, multi-year calendar) was made directly against the live
+database and the Python generator, but the reference SQL document
+(`rebuild_database_sql.md`) still showed the old, fixed reference date in
+`v_ar_aging`/`v_ap_aging` weeks later — the live views had been updated,
+the document describing them hadn't. Caught only by explicitly asking
+"does the live database actually match what this document says?" rather
+than assuming it did. Lesson: after any direct database change, the
+matching documentation update is not optional busywork to get to later —
+treat it as part of the same change, or the documentation becomes
+actively misleading rather than just incomplete.
+
+**Inserting a new row into an ordered list can silently shift every ID after it**
+Adding `Sales Discounts` and `Bad Debt Expense` to `chart_of_accounts`
+changed which `account_id` corresponds to `Cost of Goods Sold` and every
+account after it, because IDs are assigned by insertion order. Several
+hardcoded `account_id` references in comments and code, written against
+the old ordering, were left unverified against the new one — a live,
+findable-but-not-yet-found bug. Lesson: any code with hardcoded
+IDs/positions that assumes a specific ordering needs those assumptions
+re-checked the moment new rows are inserted anywhere before the end of
+that ordering, not just when rows are appended at the end.
+
+**A live API call can verify a claim more reliably than trusting a prior session's memory**
+Rather than assuming a set of schema changes had been applied correctly,
+two temporary FastAPI routes (`PRAGMA table_info(...)`, a distinct-value
+query) were added specifically to check the live database's actual
+structure and content. This caught nothing wrong in this instance, but
+established a valuable pattern: when in doubt about whether a database
+change actually took effect, query it directly rather than trusting
+notes, memory, or a previous conversation's summary.
+
 ## Python
 
 **Windows redirects `python` to the Microsoft Store by default**
@@ -161,6 +194,46 @@ script's own location instead —
 folders — makes the script work correctly no matter which directory it's
 launched from, while still avoiding a machine-specific hardcoded absolute
 path.
+
+**A hardcoded `if/elif` for month lengths is a leap-year bug waiting to happen**
+An early version of the fiscal calendar generator manually decided each
+month's last day with `if month == 2: ... elif month in [4,6,9,11]: ...`,
+always treating February as 28 days. This is silently wrong every leap
+year. `calendar.monthrange(year, month)` (returns `(weekday, days_in_month)`)
+handles this correctly without any manual date logic — worth reaching for
+by default whenever code needs to know how long a month is, rather than
+reconstructing the rule by hand.
+
+**A single named constant beats a value repeated throughout a script**
+`generate_data.py` originally had the literal year `2025` typed dozens of
+times across the file. Replacing every occurrence with one
+`CURRENT_YEAR = 2025` constant at the top meant a single line change would
+correctly update the entire script — and made every remaining `2025` that
+*should* have been `CURRENT_YEAR` but wasn't immediately obvious to spot,
+simply because it now stood out as inconsistent with the rest of the
+file.
+
+**`raise ValueError(...)` stops execution with a clear, custom message**
+Rather than letting a script continue past an invalid state and fail
+later with a more confusing, unrelated error (e.g. a database constraint
+violation deep inside a loop), checking the invalid condition explicitly
+and raising a `ValueError` with a specific message fails fast, at the
+exact point the problem is detected, in language a human can immediately
+act on.
+
+**A silent account-shift bug, found and fixed via the API, not by accident**
+After adding two new accounts mid-list to chart_of_accounts, three
+hardcoded `account_id` references elsewhere in generate_data.py (the
+AR-invoice COGS posting, the COGS budget line, and the product table's
+account columns) still pointed at the *old* position for Cost of Goods
+Sold, silently posting to Sales Discounts instead. No error was raised —
+both were valid account IDs. Found by deliberately querying
+`/api/account-balances` and asking "does Cost of Goods Sold actually have
+a balance?" rather than assuming the earlier fix had already caught
+everything. Confirmed fixed the same way: after correcting all three
+references, Cost of Goods Sold showed the expected balance, Sales
+Discounts and Bad Debt Expense showed none, and the trial balance still
+summed to exactly zero.
 
 ## Node.js / Express
 

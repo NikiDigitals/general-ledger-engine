@@ -202,22 +202,133 @@ implemented yet. Both are now true — and the reproducible seed means that
 claim can be checked again at any time by simply re-running the script
 and reading the same balance check.
 
+A later, separate extension round added multi-year support and the
+schema groundwork for reversals, write-offs, and discounts, prompted by a
+simple but important realisation: a demo database frozen to a single
+calendar year is fine for a portfolio piece, but genuinely unusable for
+the personal, ongoing use this project is also meant to support. Three
+things changed together. First, every hardcoded `2025` throughout the
+generator was replaced with a single `CURRENT_YEAR` constant, and the
+date-generating helper function was renamed from `random_date_2025()` to
+`random_date(year)`, taking the year as a parameter instead of having one
+baked into its name. Second, the manual, error-prone `if/elif` block that
+had been deciding each month's length (and quietly assumed February
+always has 28 days, which is wrong in a leap year) was replaced with
+Python's built-in `calendar.monthrange()`, which gets this right
+automatically. Third, `fiscal_calendar`'s composite primary key — chosen
+back when the table was first designed, specifically so it could hold
+more than one year without a schema change — was finally put to the test:
+a second year was added as a plain `INSERT`, with no `ALTER TABLE`
+required, confirming that early design choice had paid off.
+
+Adding a year by hand every time wasn't the goal, though — a small,
+separate, deliberately **manual** script,
+`start_new_fiscal_year.py`, was written specifically for this: it finds
+the current highest fiscal year automatically, refuses to proceed if that
+year already exists (with a clear error message rather than a cryptic
+database constraint failure), and inserts the next year's 12 periods
+using the same leap-year-safe `calendar.monthrange()` approach. It was
+deliberately kept separate from the main generator, and deliberately
+*not* automatic — a fiscal year-end is a conscious, controlled event in
+real accounting, not something that should happen quietly in the
+background the first time someone opens the app in January.
+
+Alongside the year-independence work, the schema itself grew to support
+three future capabilities without yet building the logic for any of
+them: a self-referencing `reverses_journal_entry_id` column on
+`journal_entry` (so a future correction entry can record which original
+entry it corrects, without ever editing or deleting that original), a
+`'Written Off'` status added to `ar_invoice` (requiring the table to be
+rebuilt from scratch, since SQLite doesn't allow a CHECK constraint to be
+altered directly), and two new accounts — `Sales Discounts` (a deliberate
+Debit-normal *contra-revenue* account, sitting under Revenue but behaving
+like an Expense) and `Bad Debt Expense`. None of these have application
+logic yet; the schema is simply ready for it.
+
+One loose end surfaced by this round, not yet resolved: several places in
+the generator reference account IDs by hardcoded number in comments
+(`account_id 7 = Cost of Goods Sold`), written against the *old*,
+7-account chart of accounts. Inserting two new accounts partway through
+that list silently shifted every ID that came after — a latent
+discrepancy now flagged explicitly in the generator's documentation
+rather than fixed blindly, since fixing it requires re-verifying against
+the live table rather than guessing.
+
 ---
 
-## 4. Backend API (Node/Express)
+## 4. Backend API (Python/FastAPI)
 
 **Status: in progress.**
 
-This phase opened with a first, deliberate installation: Node.js itself,
-followed by `npm init` to create the project and `npm install express` /
-`npm install better-sqlite3` to bring in a web framework and a database
-driver. A short side-by-side comparison with the Python data generator
-made the parallels immediately visible — `sqlite3.connect()` and
-`Database()`, `cursor.execute()` and `db.prepare()`, `cursor.fetchall()`
-and `.all()` — different syntax, the same underlying idea, which made a
-first test script (`test-connection.js`) fast to write and understand: it
-read the same chart of accounts already familiar from every other layer
-of this project, just from a third language now.
+This phase began in Node.js/Express, and that choice worked: `npm init`,
+`express`, and `better-sqlite3` came together quickly, a first test
+script confirmed Node could read the same chart of accounts every other
+layer of this project already knew, and a small `server.js` exposed
+`GET /api/accounts` successfully over real HTTP for the first time —
+opening the URL in a browser and seeing the same seven accounts already
+seen dozens of times via DB Browser, Python, and raw SQL, but this time
+retrieved by an actual request, felt like a genuine first: the project's
+data reachable by something other than a script running on the same
+machine. A couple of small, very typical first-server mistakes came up
+along the way (a missing leading `/` in a route path, single quotes used
+where a template literal needed backticks) and were fixed by reading the
+error output carefully rather than guessing.
+
+That Node/Express foundation was then deliberately set aside — not
+because anything about it was wrong, but because a larger, related
+personal project (LES) had, independently, settled on Python and FastAPI
+as its own backend stack. Continuing in Node would have meant every
+backend concept learned here needing to be re-learned in a different
+language later; switching now meant the opposite. The Node/Express work
+was renamed to `backend-node-exploration/` rather than deleted, keeping
+it visible in the repository as a record of a real, working, deliberately
+superseded choice rather than letting it quietly disappear into git
+history where only an active search would ever find it.
+
+Rebuilding the first endpoint in FastAPI took a fraction of the time the
+Node version had — not because FastAPI is inherently simpler, but because
+every underlying concept (a database connection, a route, returning JSON)
+had already been learned once. `@app.get("/api/accounts")` as a decorator
+above a plain Python function replaced Express's callback-style route
+definition; `cursor.execute(...).fetchall()` was already exactly the
+syntax used throughout the Python data generator, no translation needed.
+Starting the server with `uvicorn` and visiting `/api/accounts` produced
+the familiar seven-then-nine accounts as JSON — and FastAPI's
+auto-generated `/docs` page, which Express has no equivalent of, turned
+out to be immediately useful: every route interactively testable in the
+browser with no separate tool required.
+
+That interactive documentation page ended up doing double duty as a
+verification tool for the schema extension work from the previous
+section. Rather than trusting that the `ALTER`/rebuild work described
+there had actually succeeded, two small, temporary routes were added —
+one running `PRAGMA table_info(journal_entry)` to list its real columns,
+another running a distinct-fiscal-years query — and both were confirmed
+live, through the running API, rather than assumed correct from memory.
+`reverses_journal_entry_id` showed up exactly where expected; both 2025
+and 2026 showed up in the fiscal year list. This was the first time this
+project used its own backend as a verification tool for its own database,
+instead of the other way around.
+
+_(To be continued: full CRUD routes for customers, vendors, invoices, and
+reporting views; the two-database demo/personal-use setup selected via a
+`DB_PATH` environment variable; application-layer routes that actually
+create a reversal, a write-off, or a discount, now that the schema
+supports all three; and the balance guarantee re-enforced at the
+application layer as a second line of defence alongside the database
+CHECK constraint.)_
+
+**Key realisation:** a server is a genuinely different kind of program
+from anything built so far in this project — not "a script that talks to
+a database," but "a standing service that waits to be asked something."
+That held true independent of which language built it, which is exactly
+why the switch from Node/Express to Python/FastAPI cost so little: the
+concept (a route, a database call, a JSON response) had already been
+learned once, so relearning it in a different syntax was fast, while the
+thing that would have been genuinely expensive to relearn — how a server
+differs from a script — never needed relearning at all.
+
+---
 
 The real shift came with `server.js`. Unlike every Python or SQL script
 so far — which runs once, does something, and stops — a server is built
@@ -256,22 +367,6 @@ accounting standard conflict for the rest of this project, the accounting
 standard wins — starting with `chart_of_accounts`, which will support
 soft-delete for any account already used in a posting, never a hard
 delete that could orphan historical entries.
-
-**Key realisation:** a server is a genuinely different kind of program
-from anything built so far in this project — not "a script that talks to
-a database," but "a standing service that waits to be asked something."
-Everything from the database schema through the Python generator existed
-to be *run*; the backend exists to *stay running*. That distinction is
-also why the very first successful browser request felt disproportionately
-significant for how small the endpoint actually was: it was the first
-time the project's data left the boundary of "something explored on this
-one machine" and became reachable the way real applications are reached.
-
-_(To be continued: routes for customers, vendors, orders, invoices, and
-reporting views; full CRUD with the accounting-standard soft-delete rule
-in place; and — eventually — the balance guarantee enforced again at the
-application layer as a second line of defence alongside the database
-CHECK constraint.)_
 
 ---
 

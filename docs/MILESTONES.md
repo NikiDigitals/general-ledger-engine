@@ -69,19 +69,53 @@
     both cycles, all still perfectly balanced. The data generator is now
     feature-complete for a realistic single-year demo dataset. **[Python]**
 
-## Backend API (Node/Express)
+## Backend API (Python/FastAPI)
 
-12. **Node.js backend initialised**: Express and better-sqlite3 installed,
-    first successful database read from JavaScript (`test-connection.js`)
-    confirming the same data accessible from Python and SQL is reachable
-    via Node — the foundation for the REST API. **[Node.js]**
+12. **Node.js backend initialised (superseded)**: Express and
+    better-sqlite3 installed, first successful database read from
+    JavaScript (`test-connection.js`) confirming the same data accessible
+    from Python and SQL is reachable via Node. **[Node.js]**
 
-13. **First working API endpoint**: a running Express server exposes
-    `GET /api/accounts`, returning live data from erp_demo.db as JSON —
-    the first time this project's data is reachable over HTTP instead of
-    only through a database browser or script. Repository hygiene fixed
-    in the same session: project-wide `.gitignore` added and
-    `node_modules` removed from version control. **[Node.js/Express]**
+13. **First working Node/Express API endpoint (superseded)**: a running
+    Express server exposed `GET /api/accounts`, returning live data from
+    erp_demo.db as JSON — the first time this project's data was reachable
+    over HTTP instead of only through a database browser or script.
+    Repository hygiene fixed in the same session: project-wide
+    `.gitignore` added and `node_modules` removed from version control.
+    **[Node.js/Express]**
+
+14. **Backend migrated to Python/FastAPI**: the Node/Express work above
+    was deliberately superseded, not deleted — preserved as
+    `backend-node-exploration/` to align backend skills with a larger,
+    related project's tech stack. First FastAPI endpoint
+    (`GET /api/accounts`) live within `backend/`, including FastAPI's
+    auto-generated interactive docs at `/docs`, confirming the migration
+    works and exposes richer built-in tooling than the Express
+    equivalent. **[Python/FastAPI]**
+
+15. **Schema extended for reversals, write-offs, and multi-year support —
+    verified live via the API**: `journal_entry.reverses_journal_entry_id`
+    added (nullable, self-referencing FK, enabling correction entries
+    without ever editing/deleting an original posting), `'Written Off'`
+    added to `ar_invoice.status` CHECK, `Bad Debt Expense` and
+    `Sales Discounts` (a deliberate Debit-normal contra-revenue account)
+    added to `chart_of_accounts`, and `fiscal_calendar` extended to cover
+    2025–2026. On the Python side, `generate_data.py` now drives every
+    date and identifier from a single `CURRENT_YEAR` constant instead of
+    hardcoding the year, uses `calendar.monthrange()` for leap-year-safe
+    month lengths, and a new, deliberately manual
+    `scripts/start_new_fiscal_year.py` script adds future years on
+    request. `v_ar_aging`/`v_ap_aging` switched from a fixed reference
+    date to `julianday('now')`. All of it confirmed live through the
+    FastAPI backend (`PRAGMA table_info`, a distinct-fiscal-years query)
+    rather than only in DB Browser. **[SQLite/Python/FastAPI]**
+
+16. **Silent account_id drift found and fixed**: three hardcoded
+    account_id references in generate_data.py, left pointing at the old
+    chart-of-accounts ordering after two new accounts were inserted
+    mid-list, corrected and verified live via /api/account-balances —
+    Cost of Goods Sold now carries its expected balance, Sales Discounts
+    and Bad Debt Expense correctly carry none. **[Python/FastAPI]**
 
 ## Frontend (React)
 
@@ -98,10 +132,12 @@
 <!--
 Upcoming milestones, to be added once reached:
 
-14. Full CRUD API: customers, vendors, invoices, reporting views, with
+16. Full CRUD API: customers, vendors, invoices, reporting views, with
     accounting-standard soft-delete on chart_of_accounts
-15. Frontend (React) connected to the backend, first invoice created via the UI
-16. Fully running locally: backend + frontend + database together
-17. Deployed on Azure, publicly reachable
-18. Portfolio site write-up published
+17. Application-layer routes that create a reversal, a write-off, and a
+    discount, using the schema support already in place
+18. Frontend (React) connected to the backend, first invoice created via the UI
+19. Fully running locally: backend + frontend + database together
+20. Deployed on Azure, publicly reachable
+21. Portfolio site write-up published
 -->
