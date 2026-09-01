@@ -25,7 +25,7 @@
    GROUP BY, SUM, and CASE WHEN to correctly normalise Debit vs Credit
    balances per account — reusable via a single SELECT. **[SQL/DDL+DQL]**
 
-6. **Reporting layer expanded**: v_ar_aging and v_ap_aging views built,
+6. **Reporting layer expanded**: v_ar_ageing and v_ap_ageing views built,
    introducing date arithmetic (julianday) and multi-branch CASE WHEN for
    ageing buckets. **[SQL/DDL+DQL]**
 
@@ -41,7 +41,7 @@
 
 9. **Python data generator complete (structure)**: all 17 tables — O2C,
    P2P, and R2R (close_checklist, budget_line) — rebuilt via Python in a
-   single script run. Existing SQL views (v_trial_balance, v_ar_aging,
+   single script run. Existing SQL views (v_trial_balance, v_ar_ageing,
    v_close_status, v_budget_vs_actual, etc.) verified to still work
    correctly against the Python-rebuilt data. Both known gaps identified
    after initial automation — no opening capital entry, no COGS/Inventory
@@ -105,7 +105,7 @@
     hardcoding the year, uses `calendar.monthrange()` for leap-year-safe
     month lengths, and a new, deliberately manual
     `scripts/start_new_fiscal_year.py` script adds future years on
-    request. `v_ar_aging`/`v_ap_aging` switched from a fixed reference
+    request. `v_ar_ageing`/`v_ap_ageing` switched from a fixed reference
     date to `julianday('now')`. All of it confirmed live through the
     FastAPI backend (`PRAGMA table_info`, a distinct-fiscal-years query)
     rather than only in DB Browser. **[SQLite/Python/FastAPI]**

@@ -19,7 +19,7 @@ SQL tab) rebuilds the entire database from scratch.
 > required rebuilding the table from scratch, since SQLite does not allow
 > a CHECK constraint to be altered directly — see `LESSONS_LEARNED.md`.
 >
-> Note: `v_ar_aging` and `v_ap_aging` below use `julianday('now')` as the
+> Note: `v_ar_ageing` and `v_ap_ageing` below use `julianday('now')` as the
 > reference date, not a fixed date. An earlier version used a hardcoded
 > `'2025-12-15'` for reproducible demo screenshots — correct for a
 > single-year demo, but wrong for genuine ongoing use, where "today"
@@ -525,9 +525,9 @@ JOIN chart_of_accounts coa ON coa.account_id = jel.account_id
 GROUP BY coa.account_code, coa.account_name, coa.normal_balance;
 ```
 
-### v_ar_aging
+### v_ar_ageing
 ```sql
-CREATE VIEW v_ar_aging AS
+CREATE VIEW v_ar_ageing AS
 SELECT
     ai.invoice_number,
     c.customer_name,
@@ -540,15 +540,15 @@ SELECT
         WHEN julianday('now') - julianday(ai.due_date) <= 60 THEN '31-60 days'
         WHEN julianday('now') - julianday(ai.due_date) <= 90 THEN '61-90 days'
         ELSE '90+ days'
-    END AS aging_bucket
+    END AS ageing_bucket
 FROM ar_invoice ai
 JOIN customer c ON c.customer_id = ai.customer_id
 WHERE ai.status NOT IN ('Paid', 'Written Off');
 ```
 
-### v_ap_aging
+### v_ap_ageing
 ```sql
-CREATE VIEW v_ap_aging AS
+CREATE VIEW v_ap_ageing AS
 SELECT
     ai.invoice_number,
     c.vendor_name,
@@ -561,7 +561,7 @@ SELECT
         WHEN julianday('now') - julianday(ai.due_date) <= 60 THEN '31-60 days'
         WHEN julianday('now') - julianday(ai.due_date) <= 90 THEN '61-90 days'
         ELSE '90+ days'
-    END AS aging_bucket
+    END AS ageing_bucket
 FROM ap_invoice ai
 JOIN vendor c ON c.vendor_id = ai.vendor_id
 WHERE ai.status != 'Paid';
@@ -617,8 +617,8 @@ JOIN chart_of_accounts coa ON coa.account_id = bl.account_id;
 **Testing any view:**
 ```sql
 SELECT * FROM v_trial_balance;
-SELECT * FROM v_ar_aging;
-SELECT * FROM v_ap_aging;
+SELECT * FROM v_ar_ageing;
+SELECT * FROM v_ap_ageing;
 SELECT * FROM v_income_statement;
 SELECT * FROM v_close_status;
 SELECT * FROM v_budget_vs_actual;

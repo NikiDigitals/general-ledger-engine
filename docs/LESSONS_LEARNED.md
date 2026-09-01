@@ -269,3 +269,19 @@ committed to GitHub. Fixed with a project-wide `.gitignore` plus
 touching the files on disk. Lesson: add a `.gitignore` at the very start
 of a repository, before the first tool that generates a regenerable
 folder is introduced, rather than retrofitting one after the fact.
+
+## Python / FastAPI
+
+**A silent account-shift bug, found and fixed via the API, not by accident**
+After adding two new accounts mid-list to chart_of_accounts, three
+hardcoded `account_id` references elsewhere in generate_data.py (the
+AR-invoice COGS posting, the COGS budget line, and the product table's
+account columns) still pointed at the *old* position for Cost of Goods
+Sold, silently posting to Sales Discounts instead. No error was raised —
+both were valid account IDs. Found by deliberately querying
+`/api/account-balances` and asking "does Cost of Goods Sold actually have
+a balance?" rather than assuming the earlier fix had already caught
+everything. Confirmed fixed the same way: after correcting all three
+references, Cost of Goods Sold showed the expected balance, Sales
+Discounts and Bad Debt Expense showed none, and the trial balance still
+summed to exactly zero.

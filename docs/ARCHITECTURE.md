@@ -39,7 +39,7 @@
 
 - `v_trial_balance` — per-account balance, normalised for Debit/Credit
   accounts via `CASE WHEN normal_balance = ...`
-- `v_ar_aging` / `v_ap_aging` — open invoices bucketed by days past due,
+- `v_ar_ageing` / `v_ap_ageing` — open invoices bucketed by days past due,
   using `julianday()` date arithmetic against **`'now'`** (SQLite's live
   current date) and a multi-branch `CASE WHEN`. An earlier version used a
   fixed reference date (`'2025-12-15'`) for reproducible single-year demo

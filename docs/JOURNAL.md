@@ -50,8 +50,8 @@ could.
 
 Six views were built in sequence, each introducing one new SQL concept on
 top of the last: `v_trial_balance` (JOIN, GROUP BY, SUM, and a CASE WHEN
-to correctly normalise Debit vs Credit balances), `v_ar_aging` and
-`v_ap_aging` (date arithmetic with `julianday()` and a multi-branch CASE
+to correctly normalise Debit vs Credit balances), `v_ar_ageing` and
+`v_ap_ageing` (date arithmetic with `julianday()` and a multi-branch CASE
 WHEN for ageing buckets), `v_income_statement` (conditional aggregation
 without a GROUP BY, to produce a single summary row), `v_close_status`
 (COUNT and a 1-or-0 SUM pattern for percentage calculations), and finally
@@ -74,8 +74,8 @@ database constraints matter, not just how to write them.
 
 **Key realisation:** a view can be syntactically perfect and still be
 substantively wrong if it queries the wrong table or omits a filter. SQL
-checks your grammar, never your intent. Building `v_ap_aging` by adapting
-a copy of `v_ar_aging` and forgetting to change `FROM ar_invoice` to `FROM
+checks your grammar, never your intent. Building `v_ap_ageing` by adapting
+a copy of `v_ar_ageing` and forgetting to change `FROM ar_invoice` to `FROM
 ap_invoice` proved that directly.
 
 ---

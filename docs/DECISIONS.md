@@ -78,7 +78,7 @@ against a known-good prior result.
 Sales orders and purchase orders are invoiced at ~83%/82% respectively,
 and of those, only ~74%/73% are paid — leaving a deliberate set of open
 invoices in both AR and AP. A dataset where everything is paid instantly
-would make `v_ar_aging`/`v_ap_aging` return nothing meaningful; the
+would make `v_ar_ageing`/`v_ap_ageing` return nothing meaningful; the
 thresholds were chosen specifically to leave a realistic number of open,
 overdue items for those views to report on.
 
@@ -155,7 +155,7 @@ more than a couple of times in a script is a candidate for a single named
 constant.
 
 **Reporting views use `julianday('now')`, not a fixed reference date**
-`v_ar_aging`/`v_ap_aging` originally used a hardcoded `'2025-12-15'` so
+`v_ar_ageing`/`v_ap_ageing` originally used a hardcoded `'2025-12-15'` so
 that demo screenshots and worked examples would always show the same,
 reproducible ageing buckets regardless of when the query was actually
 run. That was correct for a single-year, screenshot-driven demo, but
