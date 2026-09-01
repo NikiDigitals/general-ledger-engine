@@ -50,8 +50,8 @@ could.
 
 Six views were built in sequence, each introducing one new SQL concept on
 top of the last: `v_trial_balance` (JOIN, GROUP BY, SUM, and a CASE WHEN
-to correctly normalise Debit vs Credit balances), `v_ar_ageing` and
-`v_ap_ageing` (date arithmetic with `julianday()` and a multi-branch CASE
+to correctly normalise Debit vs Credit balances), `v_ar_aging` and
+`v_ap_aging` (date arithmetic with `julianday()` and a multi-branch CASE
 WHEN for ageing buckets), `v_income_statement` (conditional aggregation
 without a GROUP BY, to produce a single summary row), `v_close_status`
 (COUNT and a 1-or-0 SUM pattern for percentage calculations), and finally
@@ -74,8 +74,8 @@ database constraints matter, not just how to write them.
 
 **Key realisation:** a view can be syntactically perfect and still be
 substantively wrong if it queries the wrong table or omits a filter. SQL
-checks your grammar, never your intent. Building `v_ap_ageing` by adapting
-a copy of `v_ar_ageing` and forgetting to change `FROM ar_invoice` to `FROM
+checks your grammar, never your intent. Building `v_ap_aging` by adapting
+a copy of `v_ar_aging` and forgetting to change `FROM ar_invoice` to `FROM
 ap_invoice` proved that directly.
 
 ---
@@ -190,18 +190,6 @@ invoiced / 92 paid; 100 purchase orders / 82 invoiced / 60 paid), and a
 final balance check — `SUM(debit) - SUM(credit)` across the entire
 `journal_entry_line` table — still returned exactly zero.
 
-**Key realisation:** a for-loop turns a dozen error-prone manual steps
-into one correct one, but it also means a booking mistake — like a
-missing posting type — now repeats consistently instead of varying by
-accident. Reporting caught the gap immediately precisely because every
-record was generated the same, deliberate way. The distinction that
-crystallised here: "the books balance" is a guarantee the database
-enforces on every single posting; "the books are complete" depends on
-whether every transaction type the business actually needs has been
-implemented yet. Both are now true — and the reproducible seed means that
-claim can be checked again at any time by simply re-running the script
-and reading the same balance check.
-
 A later, separate extension round added multi-year support and the
 schema groundwork for reversals, write-offs, and discounts, prompted by a
 simple but important realisation: a demo database frozen to a single
@@ -245,14 +233,38 @@ Debit-normal *contra-revenue* account, sitting under Revenue but behaving
 like an Expense) and `Bad Debt Expense`. None of these have application
 logic yet; the schema is simply ready for it.
 
-One loose end surfaced by this round, not yet resolved: several places in
-the generator reference account IDs by hardcoded number in comments
-(`account_id 7 = Cost of Goods Sold`), written against the *old*,
-7-account chart of accounts. Inserting two new accounts partway through
-that list silently shifted every ID that came after — a latent
-discrepancy now flagged explicitly in the generator's documentation
-rather than fixed blindly, since fixing it requires re-verifying against
-the live table rather than guessing.
+Inserting those two new accounts *mid-list*, rather than at the end,
+turned out to matter more than expected: `account_id` is assigned by
+insertion order, so every account after the insertion point silently
+shifted by one or two positions. Several hardcoded `account_id`
+references elsewhere in the generator — the AR-invoice COGS posting, the
+COGS budget line, and the product table's own account columns — were
+still written against the *old* ordering, quietly posting Cost of Goods
+Sold amounts onto Sales Discounts instead. No error was raised; both were
+valid account IDs, just the wrong one. The bug was found not by rereading
+the code, but by using the newly-built FastAPI backend as a verification
+tool: a live `/api/account-balances` query showed Cost of Goods Sold with
+no balance and Sales Discounts with one it should never have had. All
+three references were corrected and the same query re-run to confirm the
+fix — Cost of Goods Sold now carrying its expected balance, both new
+accounts correctly carrying none, and the trial balance still summing to
+exactly zero throughout.
+
+**Key realisation:** a for-loop turns a dozen error-prone manual steps
+into one correct one, but it also means a booking mistake — like a
+missing posting type, or a stale hardcoded reference — now repeats
+consistently instead of varying by accident, which is precisely what
+makes it findable: reporting caught the original COGS/Inventory gap
+immediately because every record was generated the same, deliberate way,
+and the same principle later caught the account_id drift bug through a
+live API query rather than a code review. The distinction that
+crystallised across both moments: "the books balance" is a guarantee the
+database enforces on every single posting, independent of which account
+a debit or credit lands on; "the books are complete and correct" depends
+on whether every transaction type is implemented *and* every hardcoded
+assumption still matches the data it was written against. The
+reproducible seed and the live-query habit together mean both claims can
+be re-checked at any time, rather than trusted from memory.
 
 ---
 
@@ -310,6 +322,14 @@ and 2026 showed up in the fiscal year list. This was the first time this
 project used its own backend as a verification tool for its own database,
 instead of the other way around.
 
+The Node/Express era also closed out a smaller, separate loose end: the
+project had never had a `.gitignore`, so `node_modules` — hundreds of
+regenerable files — had been committed to GitHub alongside the real
+backend code earlier in that phase. A project-wide `.gitignore` was added
+and `node_modules` removed from Git's tracking before the language switch,
+so the repository stayed clean going into the FastAPI work rather than
+carrying that clutter forward.
+
 _(To be continued: full CRUD routes for customers, vendors, invoices, and
 reporting views; the two-database demo/personal-use setup selected via a
 `DB_PATH` environment variable; application-layer routes that actually
@@ -327,46 +347,6 @@ concept (a route, a database call, a JSON response) had already been
 learned once, so relearning it in a different syntax was fast, while the
 thing that would have been genuinely expensive to relearn — how a server
 differs from a script — never needed relearning at all.
-
----
-
-The real shift came with `server.js`. Unlike every Python or SQL script
-so far — which runs once, does something, and stops — a server is built
-to keep running indefinitely, listening for requests rather than
-executing top to bottom once. `app.get("/api/accounts", ...)` defined the
-first *route*: a standing instruction for what to do whenever a request
-arrives at that specific address. A couple of small, very typical
-first-server mistakes came up along the way — a missing leading `/` in
-the route path, and using single quotes instead of backticks around a
-template string with `${PORT}` inside it — both fixed by reading the
-error output and the code side by side rather than guessing.
-
-Starting the server and opening `http://localhost:4000/api/accounts` in
-a browser produced the same seven accounts already seen dozens of times
-via DB Browser, Python, and raw SQL — but this time retrieved over an
-actual HTTP request, the same mechanism a real frontend (or anyone else
-on the internet, once deployed) will use. That moment marked the first
-time this project's data became reachable by something other than a
-script or tool running directly on the same machine.
-
-The session closed with a repository-hygiene fix: the project had never
-had a `.gitignore`, so `node_modules` — hundreds of files, all of them
-regenerable with a single `npm install` — had been committed to GitHub
-along with the real backend code. A project-wide `.gitignore` was added
-covering Node, Python, editor, and OS clutter, and `node_modules` was
-removed from Git's tracking with `git rm -r --cached`, without touching
-the actual files on disk.
-
-Two decisions were made explicit before writing any further routes:
-first, that the eventual application will use one schema and one
-codebase for both a portfolio demo (pre-seeded `erp_demo.db`) and genuine
-personal use (a second, empty database file), switched via an
-environment variable rather than separate "modes" in the code; second,
-and more fundamentally, that wherever a technical shortcut and an
-accounting standard conflict for the rest of this project, the accounting
-standard wins — starting with `chart_of_accounts`, which will support
-soft-delete for any account already used in a posting, never a hard
-delete that could orphan historical entries.
 
 ---
 

@@ -26,21 +26,12 @@ conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
 
 # --- Determine the next fiscal year automatically ---
-# Rather than asking the user to type in a year (error-prone: wrong
-# year, or the same year run twice), the script finds the highest
-# fiscal_year already present and adds 1. This is a deliberately
-# manual, user-triggered script — but the year itself is never typed
-# in by hand.
 
 cursor.execute("SELECT MAX(fiscal_year) FROM fiscal_calendar")
 current_max_year = cursor.fetchone()[0]
 next_year = current_max_year + 1
 
 # --- Safety check: refuse to duplicate an existing fiscal year ---
-# fiscal_calendar has a composite PRIMARY KEY (fiscal_year, fiscal_period),
-# so inserting an existing year would fail anyway — but with a cryptic
-# SQLite error. This check fails early with a clear, human-readable
-# message instead.
 
 cursor.execute("SELECT COUNT(*) FROM fiscal_calendar WHERE fiscal_year = ?", (next_year,))
 already_exists = cursor.fetchone()[0]
@@ -49,9 +40,6 @@ if already_exists > 0:
     raise ValueError(f"Fiscal year {next_year} already exists in fiscal_calendar. Aborting to avoid duplicate rows.")
 
 # --- Insert all 12 periods for the new fiscal year ---
-# calendar.monthrange() returns the correct number of days for each
-# month in the given year, including leap-year February — no manual
-# if/elif needed, unlike an earlier, hardcoded version of this logic.
 
 period_names = ["January", "February", "March", "April", "May", "June",
                  "July", "August", "September", "October", "November", "December"]

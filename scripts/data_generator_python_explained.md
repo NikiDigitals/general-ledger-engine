@@ -1,22 +1,15 @@
 # Python Data Generator — Explained
 
-Complete reference of `scripts/generate_data.py` in its current,
-feature-complete form. Every block below has been typed, tested, and
-verified working. Running the full script top to bottom
-(`py .\generate_data.py`, from inside `scripts/`) rebuilds all 17 tables
-and seeds a realistic, reproducible single-year dataset: 232+ transactions
-across O2C and P2P, fully balanced, with an opening capital entry and
-correct COGS/inventory postings on every sale.
+Complete reference of `scripts/generate_data.py`. Every block below has
+been typed, tested, and verified working. Running the full script top to
+bottom (`py .\generate_data.py`, from inside `scripts/`) rebuilds all 17
+tables and seeds a realistic, reproducible single-year dataset: 232+
+transactions across O2C and P2P, fully balanced, with an opening capital
+entry and correct COGS/inventory postings on every sale.
 
-> This document supersedes an earlier draft written before the schema
-> extension for reversals, write-offs, and multi-year support. Three
-> changes reflected below: (1) `CURRENT_YEAR` is now a single configurable
-> variable instead of the year being hardcoded throughout the script, (2)
-> `random_date_2025()` became `random_date(year)`, taking the year as a
-> parameter, and (3) `journal_entry` and `chart_of_accounts` include the
-> new `reverses_journal_entry_id` column and the `Bad Debt Expense` /
-> `Sales Discounts` accounts from the start. See `docs/JOURNAL.md` section
-> 3 for the full story.
+This document explains what the code does and why, concept by concept, in
+the order those concepts first appear — read top to bottom to understand
+the whole script.
 
 ---
 
@@ -44,33 +37,61 @@ def random_date(year):
     return start + timedelta(days=random_days)
 ```
 
-**What's here and why:**
-- **`sqlite3`, `random`, `os`** — as before: database access, controlled
-  randomness, and building a reliable file path.
-- **`calendar`** — new. Python's built-in `calendar` module knows how many
-  days are in any given month of any given year, including leap years —
-  used later when generating `fiscal_calendar` rows, replacing an earlier,
-  more error-prone hardcoded `if/elif` list of month lengths.
-- **`random.seed(42)`** — unchanged: guarantees the same "random" dataset
-  on every run.
-- **`CURRENT_YEAR = 2025`** — new. A single, clearly-named constant at the
-  top of the script that every other part of the script now reads from,
-  instead of the literal number `2025` being typed dozens of times
-  throughout. Changing the demo to a different year means changing only
-  this one line.
-- **`random_date(year)`** — changed from `random_date_2025()`. It does
-  exactly the same thing as before, but now takes `year` as a parameter
-  instead of having a specific year baked into its name and body. Every
-  call site now passes `CURRENT_YEAR` explicitly (`random_date(CURRENT_YEAR)`),
-  making it obvious at each call what year is being used, and making the
-  function itself reusable for any year without being renamed.
+**Imports:**
+- **`sqlite3`** — Python's built-in module for talking to SQLite
+  databases, no installation needed.
+- **`random`** — Python's built-in module for controlled randomness.
+- **`os`** — used here purely to build a reliable file path.
+- **`calendar`** — knows how many days are in any given month of any
+  given year, including leap years. Used later when generating
+  `fiscal_calendar` rows.
+- **`from datetime import date, timedelta`** — `date` represents a
+  calendar date; `timedelta` represents a span of time (e.g. "30 days")
+  that can be added to or subtracted from a `date`.
+
+**`random.seed(42)`** — "plants" the random number generator with a fixed
+starting point. Without this, every run of the script would produce
+different random data, making bugs impossible to reproduce reliably. With
+it, every run produces byte-for-byte identical "random" data. The number
+`42` is arbitrary — any number works, it just has to stay the same
+between runs to get reproducibility.
+
+**`CURRENT_YEAR = 2025`** — a constant, written in uppercase by
+convention to signal "this is a setting, not a value that changes while
+the script runs." Every date, invoice number, and journal entry generated
+below reads from this one variable — change this single line to generate
+a different year's worth of data, without touching anything else in the
+file.
+
+**`SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))`** —
+`__file__` is a built-in variable that always holds the path to the
+current script file. `os.path.abspath(...)` turns that into a full,
+unambiguous path; `os.path.dirname(...)` then takes just the folder part
+of it (wherever `scripts/` happens to live on this particular computer).
+
+**`DB_PATH = os.path.join(SCRIPT_DIR, "..", "database", "erp_demo.db")`**
+— builds the database path relative to the script's own location, not
+relative to whatever folder the script happens to be launched from.
+`os.path.join(...)` also handles the difference between Windows (`\`)
+and Mac/Linux (`/`) path separators automatically. The practical result:
+this script runs correctly whether launched from inside `scripts/`, from
+the repo root, or via an absolute path from anywhere else.
+
+**`def random_date(year): ...`** — a custom function, the first one in
+this script. Defining a function with `def` gives a name to a piece of
+reusable logic, so instead of repeating the same three lines everywhere a
+random date is needed, the script just calls `random_date(CURRENT_YEAR)`.
+Inside it: `date(year, 1, 1)` builds 1 January of the given year;
+`random.randint(0, 364)` picks a random whole number between 0 and 364
+inclusive (covering every day in a 365-day year); adding that many days
+with `timedelta(days=random_days)` lands on a random date somewhere in
+that year.
 
 ---
 
-## 1. Chart of Accounts — now 9 accounts
+## 1. Chart of Accounts
 
 ```python
-# --- Chart of Accounts ---
 cursor.execute("DROP TABLE IF EXISTS chart_of_accounts")
 
 cursor.execute("""
@@ -105,26 +126,37 @@ for code, name, acc_type, balance in accounts:
 print(f"{len(accounts)} accounts inserted.")
 ```
 
-**What changed:** two new rows, `4100 Sales Discounts` and
-`5100 Bad Debt Expense`, added to support upcoming discount and write-off
-functionality. `Sales Discounts` is a **contra-revenue account**: it lives
-under the Revenue category (code `4100`, right after `4000`) but has
-`Debit` as its normal balance — the opposite of a typical Revenue account.
-This keeps the value of discounts given visible on its own line in
-reporting, rather than silently reducing the `Sales Revenue` figure
-directly.
+**`cursor.execute("DROP TABLE IF EXISTS ...")`** — clears the table if it
+already exists, so this script can be re-run from scratch any number of
+times without erroring on "table already exists."
 
-**Unchanged concepts** (see the original explanation if needed): the list
-of tuples, `?` placeholders, and the `for code, name, acc_type, balance`
-unpacking pattern all work exactly as before — only the data itself grew
-from 7 to 9 rows.
+**Triple-quoted strings (`"""..."""`)** — let a SQL statement span
+multiple lines, keeping long `CREATE TABLE` statements readable.
+
+**`accounts = [...]`, a list of tuples** — each tuple holds one account's
+four values in a fixed order (code, name, type, balance).
+
+**`for code, name, acc_type, balance in accounts:`** — unpacks each tuple
+into four named variables in a single step. Note `acc_type`, not `type` —
+`type` is a reserved Python built-in function, so using it as a variable
+name would shadow that function.
+
+**`?` placeholders** — SQL values are never pasted directly into a query
+string. The `?` marks are filled in safely from the tuple passed as the
+second argument to `execute()`, which protects against SQL injection and
+correctly handles special characters (like an apostrophe in a name).
+
+**`Sales Discounts` is a contra-revenue account**: it sits under the
+Revenue category (account code `4100`) but has `Debit` as its normal
+balance — the opposite of a typical Revenue account. This keeps the value
+of discounts given visible on its own line in reporting, rather than
+silently reducing the `Sales Revenue` figure directly.
 
 ---
 
-## 2. General Ledger — journal_entry gains a reversal column
+## 2. General Ledger — journal_entry + journal_entry_line
 
 ```python
-# --- General Ledger ---
 cursor.execute("DROP TABLE IF EXISTS journal_entry_line")
 cursor.execute("DROP TABLE IF EXISTS journal_entry")
 
@@ -160,24 +192,30 @@ cursor.execute("""
 print("journal_entry and journal_entry_line tables created.")
 ```
 
-**What changed:** one new column, `reverses_journal_entry_id`, a nullable
-`INTEGER` that references `journal_entry` itself. This is a
-**self-referencing foreign key** — a table pointing back to its own
-primary key. If a future correction entry is posted to reverse an earlier
-mistake, this column records *which* entry it corrects, without ever
-editing or deleting the original. No route in the backend creates a
-reversal yet (that's future application-layer work), but the schema is
-now ready for it.
+**Drop order matters**: `journal_entry_line` is dropped before
+`journal_entry`, because it holds a foreign key pointing to it — always
+drop child tables before parent tables.
+
+**The balance CHECK** is the single most important line in the whole
+schema: `(debit_amount > 0 AND credit_amount = 0) OR (debit_amount = 0
+AND credit_amount > 0)` makes it physically impossible to save a line
+where both debit and credit are zero, or both are non-zero. This is
+double-entry bookkeeping enforced by the database itself, not by
+application code.
+
+**`reverses_journal_entry_id INTEGER REFERENCES journal_entry(journal_entry_id)`**
+— a **self-referencing foreign key**: a column on `journal_entry` that
+points back to `journal_entry`'s own primary key. It's nullable (no
+`NOT NULL`), so most entries leave it empty. When a future correction
+entry is posted to reverse an earlier mistake, this column records
+*which* entry it corrects — the original entry is never edited or
+deleted, only ever pointed at by a new one.
 
 ---
 
-## 3. Opening capital entry — now uses CURRENT_YEAR
+## 3. Opening capital entry
 
 ```python
-# --- Opening capital entry ---
-# A business doesn't start at zero — shareholders contribute starting capital.
-# This must be posted before any other transaction, so Cash doesn't drift
-# negative purely because expenses were recorded before any funding was.
 cursor.execute("""
     INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
     VALUES (?, ?, ?, ?, ?)
@@ -198,17 +236,28 @@ cursor.execute("""
 print("Opening capital entry created.")
 ```
 
-**What changed:** `f"{CURRENT_YEAR}-01-01"` and `CURRENT_YEAR` replace what
-were previously the literal string `"2025-01-01"` and the number `2025`.
-Functionally identical output when `CURRENT_YEAR = 2025`, but now correct
-automatically if that one constant is ever changed.
+**Why this exists:** a business doesn't start at zero — shareholders
+contribute starting capital. Without this entry, Cash would only ever
+show what's left after expenses with no funding behind it. Posting it
+immediately after the GL tables exist, before any other transaction,
+guarantees it's always the very first entry in the ledger.
+
+**`cursor.lastrowid`** — immediately after an `INSERT` into a table with
+an `AUTOINCREMENT` primary key, this returns the ID that row was just
+given. It's how a parent row (here, the journal entry header) gets linked
+to its child rows (its two balancing lines) without guessing or
+hardcoding an ID. This pattern — insert, capture `lastrowid`, use it in
+the next insert — recurs constantly for the rest of this script.
+
+**`f"{CURRENT_YEAR}-01-01"`** — an f-string, which embeds a variable's
+value directly into a string. Here it builds `"2025-01-01"` when
+`CURRENT_YEAR` is `2025`.
 
 ---
 
-## 4. Fiscal Calendar — leap-year-safe, year-independent
+## 4. Fiscal Calendar
 
 ```python
-# --- Fiscal Calendar ---
 cursor.execute("DROP TABLE IF EXISTS fiscal_calendar")
 
 cursor.execute("""
@@ -242,31 +291,35 @@ for month in range(1, 13):
 print("12 fiscal periods inserted.")
 ```
 
-**What changed, and why it matters:** the earlier version used a manual
-`if month == 2: ... elif month in [4, 6, 9, 11]: ... else: ...` block to
-decide each month's last day — correct for 2025, but **wrong for any leap
-year** (it always used 28 for February, never 29). The new version calls
-**`calendar.monthrange(CURRENT_YEAR, month)`**, which returns a tuple of
-`(first weekday of the month, number of days in the month)` — the code
-only needs the second value, hence `_, days_in_month = ...` (the
-underscore discards the first value, the same "I don't need this" pattern
-used elsewhere with `for _ in range(...)`). This automatically returns 29
-for February in a leap year and 28 otherwise, with no manual leap-year
-logic required.
+**`PRIMARY KEY (fiscal_year, fiscal_period)`** — a **composite primary
+key**: uniqueness is enforced across *both* columns together, not either
+one alone. This means the table can hold any number of years — 2025,
+2026, 2050 — without any schema change, because each year's 12 periods
+are uniquely identified by the (year, period) pair. `journal_entry`,
+`close_checklist`, and `budget_line` all reference this same pair as a
+composite foreign key later in the script.
 
-**Composite primary key note:** `(fiscal_year, fiscal_period)` was
-designed as the primary key from the very first version of this table —
-adding a second year (or a tenth) never requires a schema change, only 12
-more `INSERT` rows. This is what makes the separate
-`start_new_fiscal_year.py` script possible without touching this
-`CREATE TABLE` statement at all.
+**`for month in range(1, 13):`** — loops through the numbers 1 to 12,
+replacing what would otherwise be 12 separate manual `INSERT` statements.
+
+**`calendar.monthrange(CURRENT_YEAR, month)`** — returns a tuple of
+`(weekday of the 1st, number of days in that month)`. The code only needs
+the second value, so `_, days_in_month = calendar.monthrange(...)` uses
+an underscore to explicitly discard the first value it doesn't need — a
+common Python convention for "this value exists but I'm not using it."
+This correctly returns 29 for February in a leap year and 28 otherwise,
+with no manual leap-year logic required.
+
+**`f"{CURRENT_YEAR}-{month:02d}-01"`** — the `{month:02d}` part is a
+format specifier: format this number with at least 2 digits, padding
+with a leading zero if needed, so `1` becomes `"01"` and `12` stays
+`"12"`.
 
 ---
 
-## 5. Customer — unchanged
+## 5. Customer
 
 ```python
-# --- Customer ---
 cursor.execute("DROP TABLE IF EXISTS customer")
 
 cursor.execute("""
@@ -302,16 +355,26 @@ for i, name in enumerate(customer_names, start=1):
 print(f"{len(customer_names)} customers inserted.")
 ```
 
-No changes from the previous version — 20 customers, randomised
-name-combinations. See the original explanation for `random.choice`,
-`.append`, and `enumerate` if needed.
+**`random.choice(list)`** — picks one random item from a list.
+
+**`for _ in range(20):`** — the underscore here means "I don't need this
+loop's counter value, I just want the loop body to run 20 times."
+
+**`customer_names.append(name)`** — adds one item to the end of a list
+that already exists. `customer_names` starts empty (`[]`) and is filled
+one name at a time by combining a random prefix and a random type — 10×8
+= 80 possible combinations, sampled 20 times (occasional repeats are fine
+for a demo).
+
+**`enumerate(customer_names, start=1)`** — loops through a list while
+also producing a running counter, starting at 1 instead of the default 0.
+Needed here to build `CUST-001`, `CUST-002`, and so on.
 
 ---
 
-## 6. Product — unchanged
+## 6. Product
 
 ```python
-# --- Product ---
 cursor.execute("DROP TABLE IF EXISTS product")
 
 cursor.execute("""
@@ -347,19 +410,42 @@ for i, (name, cost, price) in enumerate(products, start=1):
     cursor.execute("""
         INSERT INTO product (sku, product_name, unit_cost, unit_price, revenue_account_id, cogs_account_id, inventory_account_id)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (sku, name, cost, price, 2, 7, 3))
+    """, (sku, name, cost, price, 6, 8, 3))
 
 print(f"{len(products)} products inserted.")
 ```
 
-No changes from the previous version — 15 products, cost-based pricing.
+**`random.uniform(min, max)`** — returns a random *decimal* number
+between two bounds, unlike `random.randint()` which gives whole numbers.
+
+**`round(..., 2)`** — rounds to 2 decimal places, needed because
+`random.uniform()` otherwise produces long, unrealistic decimals like
+`47.283947...`.
+
+**`price = round(cost * random.uniform(1.5, 2.2), 2)`** — the sale price
+is deliberately *derived from* the cost, rather than generated
+independently. This guarantees every product is sold at a profit (a
+markup between 50% and 120%), instead of risking a random price that
+happens to fall below cost.
+
+**`enumerate(products, start=1)` with tuple unpacking** —
+`for i, (name, cost, price) in enumerate(...)` pulls out the running
+counter *and* all three values from each tuple in one line.
+
+**The final three numbers (`6, 8, 3`)** in the `INSERT` are the account
+IDs for revenue, cost of goods sold, and inventory respectively —
+matching `chart_of_accounts` (account_id 6 = Sales Revenue, 8 = Cost of
+Goods Sold, 3 = Inventory). These columns aren't currently read anywhere
+else in this script — every actual posting elsewhere uses its own
+hardcoded account IDs directly — but they're kept accurate here so a
+future feature that *does* read them (e.g. a route that looks up "this
+product's correct COGS account") finds correct data.
 
 ---
 
-## 7. Sales Order + Sales Order Line — now year-parameterised
+## 7. Sales Order + Sales Order Line
 
 ```python
-# --- Sales Order + Sales Order Line ---
 cursor.execute("DROP TABLE IF EXISTS sales_order_line")
 cursor.execute("DROP TABLE IF EXISTS sales_order")
 
@@ -388,7 +474,6 @@ cursor.execute("""
 
 print("sales_order and sales_order_line tables created.")
 
-# Create 150 sales orders, each with 1 line, spread across the year
 NUM_SALES_ORDERS = 150
 
 for i in range(1, NUM_SALES_ORDERS + 1):
@@ -417,19 +502,31 @@ for i in range(1, NUM_SALES_ORDERS + 1):
 print(f"{NUM_SALES_ORDERS} sales orders with lines inserted.")
 ```
 
-**What changed:** `f"SO-{CURRENT_YEAR}-{i:04d}"` replaces the hardcoded
-`f"SO-2025-{i:04d}"`, and `random_date(CURRENT_YEAR)` replaces
-`random_date_2025()`. Same behaviour when `CURRENT_YEAR = 2025`, now
-correct for any year. Everything else — the live price lookup via
-`cursor.fetchone()[0]`, `cursor.lastrowid` linking each order to its line
-— is unchanged.
+**`NUM_SALES_ORDERS = 150`** — an uppercase constant, the same convention
+as `CURRENT_YEAR`: an adjustable setting kept at the top of its section
+rather than buried in the loop.
+
+**`random.randint(min, max)`** — a random *whole* number, inclusive of
+both bounds. Used here for customer, product, and quantity, unlike
+`random.uniform()` which gives decimals.
+
+**`cursor.execute("SELECT unit_price FROM product WHERE product_id = ?", (product_id,))`
+followed by `cursor.fetchone()[0]`** — this is the first place the script
+both *reads and writes* within the same operation: it looks up a real,
+current price from the database instead of guessing or hardcoding one.
+`fetchone()` returns one row as a tuple; `[0]` takes the first (and only)
+value out of it.
+
+**`order_date.isoformat()`** — `random_date()` returns a Python `date`
+object, not text. SQLite needs a text date (`"2025-03-15"`), so
+`.isoformat()` converts the `date` object to exactly that format before
+storing it.
 
 ---
 
-## 8. AR Invoice — status CHECK extended, still year-parameterised
+## 8. AR Invoice
 
 ```python
-# --- AR Invoice ---
 cursor.execute("DROP TABLE IF EXISTS ar_invoice")
 
 cursor.execute("""
@@ -452,21 +549,19 @@ cursor.execute("""
 
 print("ar_invoice table created.")
 
-# Invoice roughly 80% of sales orders, leaving the rest as "Open" orders
 cursor.execute("SELECT sales_order_id, customer_id, order_date FROM sales_order")
 all_orders = cursor.fetchall()
 
 invoice_counter = 0
-ar_invoice_ids = []  # keep track of which invoices exist, for the receipt step next
+ar_invoice_ids = []
 
 for order_id, customer_id, order_date_str in all_orders:
     if random.random() > 0.8:
-        continue  # skip this order — leave it un-invoiced
+        continue
 
     invoice_counter += 1
     invoice_number = f"ARINV-{CURRENT_YEAR}-{invoice_counter:04d}"
 
-    # Get the order's line amount (quantity x unit_price)
     cursor.execute("""
         SELECT quantity, unit_price FROM sales_order_line WHERE sales_order_id = ?
     """, (order_id,))
@@ -484,7 +579,6 @@ for order_id, customer_id, order_date_str in all_orders:
     new_invoice_id = cursor.lastrowid
     ar_invoice_ids.append((new_invoice_id, customer_id, amount, invoice_date))
 
-    # Post the journal entry header, dated/periodised from the real invoice date
     cursor.execute("""
         INSERT INTO journal_entry (entry_date, fiscal_year, fiscal_period, source_module, description)
         VALUES (?, ?, ?, ?, ?)
@@ -492,7 +586,6 @@ for order_id, customer_id, order_date_str in all_orders:
 
     new_je_id = cursor.lastrowid
 
-    # Dr Accounts Receivable / Cr Sales Revenue
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
@@ -503,13 +596,12 @@ for order_id, customer_id, order_date_str in all_orders:
         VALUES (?, ?, ?, ?)
     """, (new_je_id, 6, 0, amount))
 
-    # Dr Cost of Goods Sold / Cr Inventory (simplified: 50% of sale price)
     cogs_amount = round(amount * 0.5, 2)
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 7, cogs_amount, 0))
+    """, (new_je_id, 8, cogs_amount, 0))
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -523,31 +615,48 @@ for order_id, customer_id, order_date_str in all_orders:
 print(f"{invoice_counter} AR invoices created out of {len(all_orders)} orders, each with a balanced GL posting.")
 ```
 
-**What changed:**
-- The `status` CHECK constraint now includes `'Written Off'` as a fifth
-  valid value, alongside the original four. No generated invoice is
-  currently set to this status — the generator doesn't simulate
-  write-offs — but the schema now permits a future backend route to set
-  it.
-- Every hardcoded `2025` (in `f"ARINV-2025-..."` and the `2025` passed to
-  `journal_entry`) is now `CURRENT_YEAR`.
-- **Caution on the hardcoded account_id `7` used for `cogs_amount`**: with
-  the new 9-account chart of accounts, inserting `Sales Discounts` at
-  position 7 shifts every account_id that used to come after it. Verify
-  this number against the live `chart_of_accounts` table before trusting
-  it — exactly the kind of assumption this project has been bitten by
-  before. See `LESSONS_LEARNED.md`.
+This is the most concept-dense section in the script — five ideas appear
+here for the first time.
 
-Everything else — `random.random()` for probabilistic invoicing,
-`continue` to skip an order, building `ar_invoice_ids` for reuse, the
-4-line COGS-inclusive posting — is unchanged from the previous version.
+**`status` CHECK includes `'Written Off'`** — a fifth valid status
+alongside the original four, so that a future feature can mark an
+uncollectable invoice this way. No invoice generated by this script is
+ever actually set to `'Written Off'`; the value is simply permitted by
+the schema, ready for that future feature.
+
+**`random.random()`** — returns a floating-point number between `0.0`
+and `1.0`. Checking `if random.random() > 0.8: continue` means roughly
+80% of values (everything at or below 0.8) proceed past this check, and
+the remaining ~20% trigger the `continue`.
+
+**`continue`** — immediately jumps to the next iteration of the loop,
+skipping every line below it for this particular order. This is how the
+script leaves ~20% of orders deliberately un-invoiced, rather than
+invoicing every single one.
+
+**`ar_invoice_ids.append((new_invoice_id, customer_id, amount, invoice_date))`**
+— builds up a list during this loop, to be reused directly in the cash
+receipt section next, avoiding a second database query to rediscover
+which invoices exist.
+
+**`date.fromisoformat(order_date_str)`** — the reverse of `.isoformat()`:
+converts a text date read back from the database into a real Python
+`date` object, so `timedelta` arithmetic can be applied to it (here,
+`due_date = invoice_date + timedelta(days=30)`).
+
+**The four-line posting** — this journal entry has four
+`journal_entry_line` rows under the same `new_je_id`: `Dr Accounts
+Receivable / Cr Sales Revenue` (the sale itself), and
+`Dr Cost of Goods Sold / Cr Inventory` (recognising the cost of what was
+sold, calculated here as a simplified flat 50% of the sale price). A
+single journal entry can have any number of lines, as long as total
+debits equal total credits — it isn't limited to exactly two.
 
 ---
 
-## 9. Cash Receipt — year-parameterised
+## 9. Cash Receipt
 
 ```python
-# --- Cash Receipt ---
 cursor.execute("DROP TABLE IF EXISTS cash_receipt")
 
 cursor.execute("""
@@ -567,17 +676,15 @@ cursor.execute("""
 """)
 print("cash_receipt table created.")
 
-# Register a receipt for roughly 75% of invoices, leaving the rest open (for AR ageing)
 receipt_counter = 0
 
 for invoice_id, customer_id, amount, invoice_date in ar_invoice_ids:
     if random.random() > 0.75:
-        continue  # leave this invoice unpaid
+        continue
 
     receipt_counter += 1
     receipt_number = f"CR-{CURRENT_YEAR}-{receipt_counter:04d}"
 
-    # Payment happens sometime between the invoice date and 45 days later
     days_to_pay = random.randint(1, 45)
     receipt_date = invoice_date + timedelta(days=days_to_pay)
 
@@ -617,15 +724,30 @@ print(f"{receipt_counter} cash receipts created out of {len(ar_invoice_ids)} inv
 print("O2C cycle scaled up: orders, invoices, and receipts now generated with controlled randomness.")
 ```
 
-Only the year references changed to `CURRENT_YEAR`; the logic is
-otherwise identical to the earlier version.
+**`for invoice_id, customer_id, amount, invoice_date in ar_invoice_ids:`**
+— loops directly over the list built in the previous section, instead of
+a fixed range or a fresh database query. Guarantees this step only ever
+considers invoices that actually exist from this exact run.
+
+**`random.choice(["Bank Transfer", "Direct Debit"])`** — a small realism
+touch: which payment method was used is itself randomised.
+
+**Variable payment timing** (`random.randint(1, 45)` days after the
+invoice) means different invoices get paid at different speeds — some
+quickly, some close to or past their 30-day due date — producing a
+realistic spread once the AR ageing report is queried.
+
+**Two `UPDATE` statements at the end** — after posting the GL entry, the
+script also updates `cash_receipt` (linking it to its journal entry) and
+`ar_invoice` (recording that it's now paid). A single business event —
+"a customer paid" — touches three different tables: the new receipt row,
+the new journal entry and its lines, and the original invoice's status.
 
 ---
 
-## 10. Vendor — unchanged
+## 10. Vendor
 
 ```python
-# --- Vendor ---
 cursor.execute("DROP TABLE IF EXISTS vendor")
 
 cursor.execute("""
@@ -660,14 +782,16 @@ for i, name in enumerate(vendor_names, start=1):
 print(f"{len(vendor_names)} vendors inserted.")
 ```
 
-No changes — 12 vendors, randomised name-combinations.
+Structurally identical to the customer section (section 5) — combined
+random name-parts, `enumerate` for sequential codes. No new concepts;
+this is P2P's mirror of O2C's `customer` table, with account_id `4`
+(Accounts Payable) in place of AR.
 
 ---
 
-## 11. Purchase Order + Purchase Order Line — year-parameterised
+## 11. Purchase Order + Purchase Order Line
 
 ```python
-# --- Purchase Order + Purchase Order Line ---
 cursor.execute("DROP TABLE IF EXISTS purchase_order_line")
 cursor.execute("DROP TABLE IF EXISTS purchase_order")
 
@@ -696,17 +820,15 @@ cursor.execute("""
 """)
 print("purchase_order and purchase_order_line tables created.")
 
-# Create 100 purchase orders, each with 1 line, spread across the year
 NUM_PURCHASE_ORDERS = 100
 
 for i in range(1, NUM_PURCHASE_ORDERS + 1):
     po_number = f"PO-{CURRENT_YEAR}-{i:04d}"
-    vendor_id = random.randint(1, 12)      # 12 vendors now exist
-    product_id = random.randint(1, 15)      # 15 products now exist
+    vendor_id = random.randint(1, 12)
+    product_id = random.randint(1, 15)
     quantity = random.randint(5, 30)
     order_date = random_date(CURRENT_YEAR)
 
-    # Look up this product's actual cost, instead of guessing
     cursor.execute("SELECT unit_cost FROM product WHERE product_id = ?", (product_id,))
     unit_cost = cursor.fetchone()[0]
 
@@ -725,14 +847,20 @@ for i in range(1, NUM_PURCHASE_ORDERS + 1):
 print(f"{NUM_PURCHASE_ORDERS} purchase orders with lines inserted.")
 ```
 
-Only the year references changed to `CURRENT_YEAR` and `random_date(CURRENT_YEAR)`.
+Mirrors section 7 (Sales Order) closely — live-priced lookups (this time
+`unit_cost`, not `unit_price`), `random_date(CURRENT_YEAR)`,
+`cursor.lastrowid` linking each order to its line.
+
+**`None`** — Python's way of writing "no value" (SQL's `NULL`). Used here
+for `description`, since a real `product_id` is supplied instead — the
+column exists for free-text purchases that aren't tied to a catalogue
+product, which this generator doesn't currently produce.
 
 ---
 
-## 12. AP Invoice — year-parameterised
+## 12. AP Invoice
 
 ```python
-# --- AP Invoice ---
 cursor.execute("DROP TABLE IF EXISTS ap_invoice")
 
 cursor.execute("""
@@ -754,21 +882,19 @@ cursor.execute("""
 """)
 print("ap_invoice table created.")
 
-# Invoice roughly 85% of purchase orders, leaving the rest as "Open"
 cursor.execute("SELECT purchase_order_id, vendor_id, order_date FROM purchase_order")
 all_pos = cursor.fetchall()
 
 ap_invoice_counter = 0
-ap_invoice_ids = []  # keep track of which invoices exist, for the payment step next
+ap_invoice_ids = []
 
 for po_id, vendor_id, order_date_str in all_pos:
     if random.random() > 0.85:
-        continue  # skip this PO — leave it un-invoiced
+        continue
 
     ap_invoice_counter += 1
     invoice_number = f"APINV-{CURRENT_YEAR}-{ap_invoice_counter:04d}"
 
-    # Get the PO's line amount (quantity x unit_cost)
     cursor.execute("""
         SELECT quantity, unit_cost FROM purchase_order_line WHERE purchase_order_id = ?
     """, (po_id,))
@@ -796,12 +922,12 @@ for po_id, vendor_id, order_date_str in all_pos:
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 3, amount, 0))  # account_id 3 = Inventory
+    """, (new_je_id, 3, amount, 0))
 
     cursor.execute("""
         INSERT INTO journal_entry_line (journal_entry_id, account_id, debit_amount, credit_amount)
         VALUES (?, ?, ?, ?)
-    """, (new_je_id, 4, 0, amount))  # account_id 4 = Accounts Payable
+    """, (new_je_id, 4, 0, amount))
 
     cursor.execute("""
         UPDATE ap_invoice SET journal_entry_id = ? WHERE ap_invoice_id = ?
@@ -810,17 +936,22 @@ for po_id, vendor_id, order_date_str in all_pos:
 print(f"{ap_invoice_counter} AP invoices created out of {len(all_pos)} purchase orders, each with a balanced GL posting.")
 ```
 
-Only the year references changed. Note this section's `status` CHECK was
-**not** extended with `'Written Off'` — that value was only added to
-`ar_invoice.status` (write-offs apply to *receivables* you can't collect,
-not to *payables* you owe).
+Mirrors section 8 (AR Invoice) — same probabilistic invoicing pattern
+(`random.random()` + `continue`), same list-building for reuse in the
+next section — but only two posting lines instead of four:
+`Dr Inventory / Cr Accounts Payable`. A purchase increases inventory
+directly; there's no equivalent of the "sale-side COGS" step on the
+buying side, since nothing has been sold yet.
+
+Note this table's `status` CHECK does **not** include `'Written Off'` —
+that value only makes sense for money owed *to* the business
+(receivables), not money the business owes *out* (payables).
 
 ---
 
-## 13. Vendor Payment — year-parameterised
+## 13. Vendor Payment
 
 ```python
-# --- Vendor Payment ---
 cursor.execute("DROP TABLE IF EXISTS vendor_payment")
 
 cursor.execute("""
@@ -840,17 +971,15 @@ cursor.execute("""
 """)
 print("vendor_payment table created.")
 
-# Register a payment for roughly 80% of AP invoices, leaving the rest open (for AP ageing)
 payment_counter = 0
 
 for invoice_id, vendor_id, amount, invoice_date in ap_invoice_ids:
     if random.random() > 0.8:
-        continue  # leave this invoice unpaid
+        continue
 
     payment_counter += 1
     payment_number = f"VP-{CURRENT_YEAR}-{payment_counter:04d}"
 
-    # Payment happens sometime between the invoice date and 40 days later
     days_to_pay = random.randint(1, 40)
     payment_date = invoice_date + timedelta(days=days_to_pay)
 
@@ -890,14 +1019,16 @@ print(f"{payment_counter} vendor payments created out of {len(ap_invoice_ids)} i
 print("P2P cycle scaled up: purchase orders, invoices, and payments now generated with controlled randomness.")
 ```
 
-Only the year references changed.
+Mirrors section 9 (Cash Receipt) exactly — `Dr Accounts Payable / Cr Cash`
+instead of `Dr Cash / Cr Accounts Receivable`, same two `UPDATE`
+statements at the end linking the journal entry and marking the invoice
+paid.
 
 ---
 
-## 14. Close Checklist — year-parameterised
+## 14. Close Checklist
 
 ```python
-# --- Close Checklist ---
 cursor.execute("DROP TABLE IF EXISTS close_checklist")
 
 cursor.execute("""
@@ -930,14 +1061,18 @@ for task_name, owner, status in close_tasks:
 print(f"{len(close_tasks)} close checklist tasks inserted.")
 ```
 
-Only the year reference changed.
+**`FOREIGN KEY (fiscal_year, fiscal_period) REFERENCES fiscal_calendar(fiscal_year, fiscal_period)`**
+— a **composite foreign key**, referencing both columns of
+`fiscal_calendar`'s composite primary key at once. This table holds a
+small, fixed set of representative tasks rather than generated volume —
+demonstrating the close-checklist concept, not simulating a full year of
+close activity.
 
 ---
 
-## 15. Budget Line — year-parameterised
+## 15. Budget Line
 
 ```python
-# --- Budget Line ---
 cursor.execute("DROP TABLE IF EXISTS budget_line")
 
 cursor.execute("""
@@ -957,7 +1092,7 @@ print("budget_line table created.")
 
 budgets = [
     (6, 200.00),   # account_id 6 = Sales Revenue
-    (7, 400.00),   # account_id 7 = Cost of Goods Sold
+    (8, 400.00),   # account_id 8 = Cost of Goods Sold
 ]
 
 for account_id, budgeted_amount in budgets:
@@ -969,13 +1104,10 @@ for account_id, budgeted_amount in budgets:
 print(f"{len(budgets)} budget lines inserted.")
 ```
 
-**Same caution as section 8:** these hardcoded account_ids (`6`, `7`) were
-written against the *old* 7-account chart of accounts. With `Sales
-Discounts` now inserted at position 7 in the 9-account list, verify these
-numbers against the live table before trusting the comments — this file
-documents the code as currently written, including this latent
-discrepancy, rather than silently correcting it without flagging it. See
-`LESSONS_LEARNED.md`.
+**`UNIQUE (fiscal_year, fiscal_period, account_id)`** — a uniqueness rule
+spanning three columns together, ensuring no more than one budget row can
+exist for the same year+period+account combination, without restricting
+any single column on its own.
 
 ---
 
@@ -986,7 +1118,10 @@ conn.commit()
 conn.close()
 ```
 
-Unchanged.
+**`conn.commit()`** writes everything done so far permanently to the
+database file — the Python equivalent of clicking "Write Changes" in DB
+Browser. Without it, none of the above would actually persist once the
+script finishes. **`conn.close()`** releases the connection cleanly.
 
 ---
 
@@ -994,14 +1129,14 @@ Unchanged.
 
 ```
 Setup                        (imports, seed, CURRENT_YEAR, connection, random_date(year))
-1.  Chart of Accounts        (table + 9 accounts, incl. Sales Discounts, Bad Debt Expense)
+1.  Chart of Accounts        (table + 9 accounts)
 2.  General Ledger           (journal_entry incl. reverses_journal_entry_id + journal_entry_line)
 3.  Opening capital entry    (Dr Cash / Cr Common Stock, €1,000)
-4.  Fiscal Calendar          (table + 12 periods, leap-year-safe via calendar.monthrange)
+4.  Fiscal Calendar          (table + 12 periods, leap-year-safe)
 5.  Customer                 (table + 20 customers, randomised names)
 6.  Product                  (table + 15 products, cost-based pricing)
 7.  Sales Order + Line       (table + 150 orders, live-priced, random dates)
-8.  AR Invoice               (~80% of orders invoiced, 4-line GL posting incl. COGS, 'Written Off' status supported)
+8.  AR Invoice               (~80% of orders invoiced, 4-line GL posting incl. COGS)
 9.  Cash Receipt             (~75% of invoices paid, variable timing)
 10. Vendor                   (table + 12 vendors, randomised names)
 11. Purchase Order + Line    (table + 100 orders, live-priced, random dates)
@@ -1012,20 +1147,20 @@ Setup                        (imports, seed, CURRENT_YEAR, connection, random_da
 conn.commit() / conn.close()
 ```
 
-**Result of a full run:** 232+ transactions across O2C and P2P, an opening
-capital entry, correct COGS/inventory postings on every sale, and a trial
-balance that sums to exactly zero, verified after this schema extension
-exactly as before — confirming the balance guarantee held across the
-extension work, not just the original build.
+**Result of a full run:** 232+ transactions across O2C and P2P, an
+opening capital entry, correct COGS/inventory postings on every sale, and
+a trial balance that sums to exactly zero —
+`SELECT ROUND(SUM(debit_amount) - SUM(credit_amount), 2) FROM journal_entry_line;`
+returns `0.0` regardless of how much randomness was involved in producing
+the data.
 
 ## What's next
 
-Adding a fiscal year no longer requires touching this script at all —
-`scripts/start_new_fiscal_year.py` handles that separately (see its own
-explained document). The schema now supports reversals
-(`reverses_journal_entry_id`) and write-offs (`'Written Off'` status), but
-no route or script yet *creates* one — that's application-layer work for
-the Python/FastAPI backend. See `docs/ARCHITECTURE.md` under "Future
-extensions" for what's still pending on discounts, and the account_id
-caution notes above (sections 8 and 15) for a known, unresolved
-discrepancy worth fixing before it causes a silent posting error.
+The schema supports reversals (`reverses_journal_entry_id`) and
+write-offs (`'Written Off'` status), but no code in this script — or
+anywhere else yet — creates one; that's application-layer work for the
+Python/FastAPI backend. Adding a new fiscal year doesn't require touching
+this script at all — see `scripts/start_new_fiscal_year_explained.md`
+for the separate, manually-triggered script that handles that. See
+`docs/ARCHITECTURE.md` under "Future extensions" for what's still pending
+on discounts and more accurate per-product COGS costing.
